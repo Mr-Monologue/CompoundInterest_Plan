@@ -9,7 +9,15 @@
 
 import os
 import json
+import json
+from pathlib import Path
+from dotenv import load_dotenv
 from typing import Dict, Any, Optional
+
+# 加载 .env 文件
+load_dotenv()
+
+CONFIG_FILE = Path("config.json")
 
 # 默认配置
 DEFAULT_CONFIG = {
@@ -51,32 +59,22 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_config(config_path: str = "config.json") -> Dict[str, Any]:
-    """
-    加载配置文件，合并默认配置和用户自定义配置
+def load_config():
+    if not CONFIG_FILE.exists():
+        raise FileNotFoundError(f"配置文件 {CONFIG_FILE} 未找到")
 
-    Args:
-        config_path: 配置文件路径
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = json.load(f)
 
-    Returns:
-        合并后的配置字典
-    """
-    config = DEFAULT_CONFIG.copy()
+    # 从环境变量覆盖配置
+    config["http_proxy"] = os.getenv("HTTP_PROXY", config.get("http_proxy", ""))
+    config["timeout"] = int(os.getenv("TIMEOUT", config.get("timeout", 10)))
+    config["user_agent"] = os.getenv(
+        "USER_AGENT", config.get("user_agent", "Mozilla/5.0")
+    )
 
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                user_config = json.load(f)
-                # 递归合并配置
-                config = _deep_merge(config, user_config)
-                print(f"✓ 已加载配置文件: {config_path}")
-        except Exception as e:
-            print(f"⚠ 配置文件加载失败: {e}")
-            print("使用默认配置")
-    else:
-        print(f"⚠ 配置文件不存在: {config_path}")
-        print("使用默认配置")
-
+    print(f"数据源路径: {CONFIG_FILE}")
+    print(f"数据源版本: {config.get('version', '未知')}")
     return config
 
 

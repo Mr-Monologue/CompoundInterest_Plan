@@ -13,6 +13,15 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, Tuple
 import time
+import requests_cache
+import yfinance as yf
+import akshare as ak
+from datetime import datetime, timedelta
+from storage import connect_db
+import random
+
+# 启用全局 requests_cache，缓存有效期为 1 天
+requests_cache.install_cache("yfinance_cache", backend="sqlite", expire_after=86400)
 
 # 尝试导入数据源库
 try:
@@ -38,7 +47,20 @@ class DataSourceError(Exception):
     pass
 
 
-@st.cache_data(ttl=900)  # 15分钟缓存
+try:
+    import streamlit as st
+
+    cache_data = st.cache_data
+except Exception:
+
+    def cache_data(**_kwargs):
+        def deco(fn):
+            return fn
+
+        return deco
+
+
+@cache_data(ttl=900)  # 15分钟缓存
 def get_index_data_akshare(symbol: str, period: str = "1y") -> pd.DataFrame:
     """
     使用AKShare获取指数数据
@@ -107,7 +129,7 @@ def get_index_data_akshare(symbol: str, period: str = "1y") -> pd.DataFrame:
         raise DataSourceError(f"AKShare获取指数数据失败: {e}")
 
 
-@st.cache_data(ttl=900)
+@cache_data(ttl=900)
 def get_index_data_yfinance(symbol: str, period: str = "1y") -> pd.DataFrame:
     """
     使用yfinance获取指数数据
@@ -158,7 +180,7 @@ def get_index_data_yfinance(symbol: str, period: str = "1y") -> pd.DataFrame:
         raise DataSourceError(f"yfinance获取指数数据失败: {e}")
 
 
-@st.cache_data(ttl=300)  # 5分钟缓存（净值更新较频繁）
+@cache_data(ttl=300)  # 5分钟缓存（净值更新较频繁）
 def get_fund_nav_akshare(fund_code: str) -> Tuple[float, str, Optional[str]]:
     """
     使用AKShare获取基金净值
@@ -194,7 +216,7 @@ def get_fund_nav_akshare(fund_code: str) -> Tuple[float, str, Optional[str]]:
         return None, "AKShare", str(e)
 
 
-@st.cache_data(ttl=300)
+@cache_data(ttl=300)
 def get_fund_nav_yfinance(fund_code: str) -> Tuple[float, str, Optional[str]]:
     """
     使用yfinance获取基金净值
@@ -276,24 +298,23 @@ def get_index_data_with_fallback(
     Returns:
         (数据DataFrame, 数据源, 状态信息)
     """
-    # 1. 优先尝试yfinance（因为AKShare指数数据有问题）
-    try:
-        df = get_index_data_yfinance(symbol_en, period)
-        return df, f"YF_{symbol_en}", "成功获取"
-    except Exception as e:
-        print(f"yfinance失败: {e}")
-
-    # 2. 回退到AKShare
-    try:
-        df = get_index_data_akshare(symbol, period)
-        return df, f"AKShare_{symbol}", "回退获取成功"
-    except Exception as e:
-        print(f"AKShare失败: {e}")
-
-    # 3. 生成模拟数据作为最后的fallback
-    print("所有数据源都失败，生成模拟数据")
-    df = generate_mock_index_data()
-    return df, "模拟数据", "使用模拟数据作为fallback"
+    today = datetime.now().date().isoformat()
+    with connect_db() as con:
+        row = pd.read_sql(
+            "SELECT * FROM proxy_daily WHERE date = ?", con, params=[today]
+        )
+    if not row.empty:
+        df_proxy = pd.DataFrame(
+            {
+                "date": [pd.to_datetime(row.loc[0, "date"])],
+                "close": [row.loc[0, "close"]],
+                "ma200": [row.loc[0, "ma200"]],
+            }
+        )
+        used_src = row.loc[0, "source"]
+        return df_proxy, used_src, None
+    else:
+        return get_index_data_direct(symbol, symbol_en)
 
 
 def get_data_source_status() -> Dict[str, bool]:
@@ -346,6 +367,66 @@ def generate_mock_index_data() -> pd.DataFrame:
 def clear_cache():
     """清除所有缓存"""
     st.cache_data.clear()
+
+
+def get_index_data_direct(index_code, symbol):
+    # 1) yfinance
+    df = _yf_download_retry(symbol, period="1y", interval="1d")
+    if df is not None:
+        df = df.rename(columns={"Close": "close"})
+        df["date"] = pd.to_datetime(df.index)
+        df["ma200"] = df["close"].rolling(200).mean()
+        return df[["date", "close", "ma200"]], "yfinance", None
+
+    # 2) AKShare （指数日线）
+    try:
+        df2 = ak.stock_zh_index_daily_em(symbol=index_code)
+        if df2 is not None and not df2.empty:
+            df2 = (
+                df2.rename(columns={"日期": "date", "收盘": "close"})
+                if "日期" in df2.columns
+                else df2
+            )
+            if "date" not in df2.columns:
+                df2.columns = ["date", "open", "close", "high", "low", "volume"]
+            df2["date"] = pd.to_datetime(df2["date"])
+            df2["ma200"] = df2["close"].rolling(200).mean()
+            df2 = df2.sort_values("date")
+            return df2[["date", "close", "ma200"]], "AKShare", None
+    except Exception as e:
+        print(f"[AKShare] index fallback failed: {e}  （升级 AKShare 可修复部分接口）")
+
+    # 3) 兜底：Mock
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=300)
+    dates = pd.date_range(start=start_date, end=end_date, freq="D")
+    prices = [15000 + i * 0.5 for i in range(len(dates))]
+    mock = pd.DataFrame({"date": dates, "close": prices})
+    mock["ma200"] = mock["close"].rolling(200).mean()
+    return mock, "Mock", "All data sources failed"
+
+
+def _yf_download_retry(
+    ticker, period="1y", interval="1d", max_retries=4, base_sleep=2.0
+):
+    for i in range(max_retries):
+        try:
+            df = yf.download(
+                ticker,
+                period=period,
+                interval=interval,
+                progress=False,
+                threads=False,
+                auto_adjust=False,
+                group_by="ticker",
+            )
+            if df is not None and not df.empty:
+                return df
+        except Exception as e:
+            sleep = base_sleep * (2**i) + random.uniform(0, 0.8)
+            print(f"[YF] attempt {i+1} failed: {e} → sleep {sleep:.1f}s")
+            time.sleep(sleep)
+    return None
 
 
 if __name__ == "__main__":
