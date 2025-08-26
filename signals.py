@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime, date
+from decimal import Decimal, ROUND_HALF_UP
 
 
 def calculate_ma200_deviation(

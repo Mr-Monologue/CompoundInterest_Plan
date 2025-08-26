@@ -78,6 +78,17 @@ def load_config():
     return config
 
 
+def load_all_funds_config():
+    cfg = load_config()
+    defaults = cfg.get("defaults", {})
+    funds = []
+    for f in cfg.get("funds", []):
+        merged = _deep_merge(defaults, f)
+        merged["fund_code"] = f["fund_code"]
+        funds.append(merged)
+    return funds, cfg
+
+
 def _deep_merge(base: Dict, update: Dict) -> Dict:
     """递归合并字典"""
     result = base.copy()

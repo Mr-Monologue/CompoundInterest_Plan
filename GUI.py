@@ -7,16 +7,15 @@
 
 import streamlit as st
 import pandas as pd
+import sqlite3
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
-import sqlite3
-from storage import DB_PATH
 
-# 导入自定义模块
-from config import load_config, validate_config, get_fund_info
+from storage import DB_PATH, init_db
+from config import load_all_funds_config, load_config, validate_config
 from data_sources import (
     get_latest_nav_with_fallback,
     get_index_data_with_fallback,
@@ -30,6 +29,26 @@ from signals import (
     get_buy_signals,
 )
 from holdings import HoldingsCalculator, format_currency, format_percentage
+from services.dca_service import run_once_for_fund
+
+# 初始化数据库
+init_db()
+
+# 加载配置
+funds, raw_cfg = load_all_funds_config()
+FUND_MAP = {f["fund_code"]: f for f in funds}
+
+# 侧边栏基金选择
+selected_code = st.sidebar.selectbox(
+    "选择基金", ["(全部)"] + [f["fund_code"] for f in funds]
+)
+
+# 侧边栏刷新按钮
+if st.sidebar.button("⚙️ 立即计算选中基金"):
+    if selected_code != "(全部)":
+        run_once_for_fund(FUND_MAP[selected_code])
+        st.success("已计算并入库")
+        st.rerun()
 
 # 页面配置
 st.set_page_config(
@@ -485,6 +504,7 @@ def holdings_page(config, holdings_summary, holdings_calculator):
 
         with col3:
             st.metric("夏普比率", f"{roi_metrics['sharpe_ratio']:.3f}")
+            st.caption("夏普比率（简化估算，仅供参考）")
 
         with col4:
             st.metric("盈亏平衡ROI", f"{roi_metrics['breakeven_roi']:.2f}%")
@@ -551,79 +571,111 @@ def sidebar_controls():
         st.success("缓存已清除")
 
 
+# 数据读取函数
 @st.cache_data(ttl=600)
-def load_table(name: str) -> pd.DataFrame:
+def load_table_v2(name: str, fund_code: str | None = None):
     con = sqlite3.connect(DB_PATH)
     try:
-        df = pd.read_sql(f"SELECT * FROM {name}", con, parse_dates=["date"])
+        if fund_code and name.endswith("_v2"):
+            df = pd.read_sql(
+                f"SELECT * FROM {name} WHERE fund_code=?",
+                con,
+                params=[fund_code],
+                parse_dates=["date"],
+            )
+        else:
+            df = pd.read_sql(f"SELECT * FROM {name}", con, parse_dates=["date"])
         return df.sort_values("date")
     finally:
         con.close()
 
 
+# 总览页面
+def portfolio_overview():
+    rows = []
+    for f in funds:
+        code = f["fund_code"]
+        plan = load_table_v2("dca_plan_v2", code).tail(1)
+        proxy = load_table_v2("proxy_daily_v2", code).tail(1)
+        nav = load_table_v2("nav_daily_v2", code).tail(1)
+        if plan.empty or proxy.empty or nav.empty:
+            continue
+        rows.append(
+            {
+                "基金": f"{code} {f['fund_name']}",
+                "最新净值": nav["nav"].iloc[-1],
+                "估值偏离(%)": proxy["dev_pct"].iloc[-1],
+                "估值层级": plan["level"].iloc[-1].upper(),
+                "本周建议(¥)": plan["total_amt"].iloc[-1],
+                "固定(¥)": plan["base_amt"].iloc[-1],
+                "动态(¥)": plan["dyn_amt"].iloc[-1],
+                "准备金余(¥)": plan["reserve_after"].iloc[-1],
+                "数据日期": plan["date"].iloc[-1],
+            }
+        )
+    if rows:
+        df = pd.DataFrame(rows).sort_values("估值偏离(%)")
+        st.subheader("📊 组合总览")
+        st.dataframe(df, use_container_width=True)
+        st.caption("提示：偏离越负→越低估；建议金额含固定+动态。")
+    else:
+        st.info("暂无数据，先运行一次 daily_run 或点击下方按钮。")
+
+
+# 单基金页面（保留原有 4 个 Tab）
+def single_fund_view(fund_code):
+    fund = FUND_MAP[fund_code]
+    st.title(f"{fund['fund_name']} ({fund_code})")
+
+    # 仪表盘部分
+    st.subheader("📊 仪表盘 - 关键指标")
+    nav_df = load_table_v2("nav_daily_v2", fund_code)
+    if not nav_df.empty:
+        latest_nav = nav_df.iloc[-1]["nav"]
+        st.metric("最新净值", f"{latest_nav:.4f}")
+    else:
+        st.metric("最新净值", "暂无数据")
+    # 添加更多仪表盘内容
+
+    # 趋势部分
+    st.subheader("📈 趋势图")
+    proxy_df = load_table_v2("proxy_daily_v2", fund_code)
+    if not proxy_df.empty:
+        fig = px.line(proxy_df, x="date", y=["close", "ma200"], title="指数与MA200趋势")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("暂无趋势数据")
+
+    # 计划部分
+    st.subheader("🧭 定投计划")
+    plan_df = load_table_v2("dca_plan_v2", fund_code)
+    if not plan_df.empty:
+        latest_plan = plan_df.iloc[-1]
+        st.write(
+            f"当前定投计划 - 层级: {latest_plan['level']}, 总金额: {format_currency(latest_plan['total_amt'])}"
+        )
+
+        # 准备金变化折线图
+        st.subheader("准备金变化")
+        fig_reserve = px.line(
+            plan_df, x="date", y="reserve_after", title="准备金余额变化"
+        )
+        st.plotly_chart(fig_reserve, use_container_width=True)
+    else:
+        st.info("暂无定投计划数据")
+
+    # 日志部分
+    st.subheader("📜 交易日志")
+    # 这里可以添加交易日志内容
+    st.info("暂无交易日志数据")
+
+
+# 主页面逻辑
 def main():
-    """主函数"""
-    # 加载配置
-    config = load_config()
-
-    # 验证配置
-    is_valid, errors = validate_config(config)
-    if not is_valid:
-        st.error("配置验证失败:")
-        for error in errors:
-            st.error(f"  - {error}")
-        return
-
-    # 加载状态
-    state = load_state()
-
-    # 侧边栏控制
-    sidebar_controls()
-
-    # 获取基金数据
-    nav, df, index_source = get_fund_data(config, st.session_state.manual_nav_override)
-
-    if nav is None or df is None:
-        st.error("无法获取必要数据，请检查网络连接或手动输入净值")
-        return
-
-    # 计算信号
-    deviation_info, allocation, trend_info, buy_signals = calculate_all_signals(
-        config, nav, df
-    )
-
-    if not all([deviation_info, allocation, trend_info]):
-        st.error("信号计算失败")
-        return
-
-    # 持仓计算
-    holdings_calculator = HoldingsCalculator(config)
-    holdings_summary = holdings_calculator.calculate_holdings_summary(nav)
-
-    # 页面导航
-    st.sidebar.divider()
-    st.sidebar.subheader("📄 页面导航")
-
-    page = st.sidebar.selectbox(
-        "选择页面", ["🏠 首页", "💰 定投建议", "📊 估值 & 买点", "💼 持仓明细"]
-    )
-
-    # 根据选择显示不同页面
-    if page == "🏠 首页":
-        main_page(config, nav, deviation_info, allocation, holdings_summary)
-    elif page == "💰 定投建议":
-        dca_advice_page(config, allocation, deviation_info)
-    elif page == "📊 估值 & 买点":
-        valuation_page(config, df, deviation_info, trend_info, buy_signals)
-    elif page == "💼 持仓明细":
-        holdings_page(config, holdings_summary, holdings_calculator)
-
-    # 保存状态
-    if st.button("💾 保存状态"):
-        if save_state():
-            st.success("状态已保存")
-        else:
-            st.error("状态保存失败")
+    if selected_code == "(全部)":
+        portfolio_overview()
+    else:
+        single_fund_view(selected_code)
 
 
 if __name__ == "__main__":
