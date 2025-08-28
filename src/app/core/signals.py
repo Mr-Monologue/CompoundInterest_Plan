@@ -130,19 +130,24 @@ def calculate_dca_allocation(
     reserve_balance = state.get("reserve_balance", 0.0)
     reserve_cap = weekly_budget * reserve_cap_months * 4  # 月转周
 
+    # 修正：按周入罐逻辑 - 本周预算剩余先计入准备金
+    inflow = weekly_budget - fixed_amount
+    reserve_before = min(reserve_balance + inflow, reserve_cap)
+
     # 限制准备金使用
-    available_reserve = min(reserve_balance, reserve_cap)
+    available_reserve = min(reserve_before, reserve_cap)
     dynamic_amount = available_reserve * alloc_ratio
 
-    # 限制最大倍数
-    max_dynamic = weekly_budget * max_weekly_multiple
+    # 修正：限制最大倍数，确保总金额不超过上限
+    weekly_cap_total = weekly_budget * max_weekly_multiple
+    max_dynamic = max(0.0, weekly_cap_total - fixed_amount)
     dynamic_amount = min(dynamic_amount, max_dynamic)
 
     # 总定投金额
     total_amount = fixed_amount + dynamic_amount
 
     # 更新准备金余额
-    reserve_after = reserve_balance - dynamic_amount
+    reserve_after = reserve_before - dynamic_amount
 
     return {
         "fixed_amount": fixed_amount,

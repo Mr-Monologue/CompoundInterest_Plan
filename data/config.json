@@ -9,7 +9,13 @@
     "ma200_mid": 5.0,
     "alloc_low": 0.75,
     "alloc_mid": 0.25,
-    "alloc_high": 0.0
+    "alloc_high": 0.0,
+    "manual_holdings": {
+      "enabled": true,
+      "units_left": 0.0,
+      "avg_cost": 0.0,
+      "realized_pnl": 0.0
+    }
   },
   "funds": [
     {

@@ -130,7 +130,7 @@ class HoldingsCalculator:
             "cost_disp": cost_left,
             "m2m_disp": mtm_value,
             "pnl_disp": unrealized_pnl,
-            "platform_rate": unrealized_pct,
+            "unrealized_pct": unrealized_pct,
             "total_pnl": total_pnl,
             "breakeven_nav": quant_nav(breakeven_nav),
             "realized_pnl": realized_pnl_dec,
@@ -176,7 +176,7 @@ class HoldingsCalculator:
             "current_nav": current_nav,
             "market_value": float(precise_result["m2m_disp"]),
             "unrealized_pnl": float(precise_result["pnl_disp"]),
-            "unrealized_pct": float(precise_result["platform_rate"]),
+            "unrealized_pct": float(precise_result["unrealized_pct"]),
             "total_pnl": float(precise_result["total_pnl"]),
             "breakeven_nav": float(precise_result["breakeven_nav"]),
         }
@@ -369,7 +369,7 @@ if __name__ == "__main__":
     print(f"\n精确计算结果:")
     print(f"  持仓市值: {precise_result['m2m_disp']}")
     print(f"  未实现盈亏: {precise_result['pnl_disp']}")
-    print(f"  盈亏比例: {precise_result['platform_rate']}%")
+    print(f"  盈亏比例: {precise_result['unrealized_pct']}%")
     print(f"  累计盈亏: {precise_result['total_pnl']}")
 
     # 测试持仓汇总
