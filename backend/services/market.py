@@ -2,44 +2,26 @@ import requests
 import pandas as pd
 import yfinance as yf
 import re
-import json
 from datetime import datetime
 import time
-import os
-import contextlib
+import json
+import random
 
 # === 全局缓存 ===
 _market_cache = {}
 CACHE_DURATION = 600
 
-
-# === 🛡️ 网络工具：强制直连 ===
-@contextlib.contextmanager
-def force_no_proxy():
-    proxies = {}
-    for key in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"]:
-        if key in os.environ:
-            proxies[key] = os.environ[key]
-            del os.environ[key]
-    try:
-        yield
-    finally:
-        for key, value in proxies.items():
-            os.environ[key] = value
-
-
 # ===========================
-# 1. 场外基金抓取 (天天基金) - 双通道增强版
+# 1. 场外基金 (005827 等) - 混合双打版
 # ===========================
-def fetch_mutual_fund_core_pingzhong(code: str, use_proxy: bool):
-    """
-    使用东财 pingzhongdata JS 接口抓取场外基金历史净值
-    返回: DataFrame(date, close)
-    """
-    import traceback
 
+
+def fetch_fund_pingzhong(code: str, use_proxy: bool = False):
+    """
+    源0: 东财 pingzhongdata JS
+    输出: DataFrame(date, close)
+    """
     url = f"https://fund.eastmoney.com/pingzhongdata/{code}.js"
-
     headers = {
         "Referer": f"https://fundf10.eastmoney.com/jjjz_{code}.html",
         "User-Agent": (
@@ -48,20 +30,16 @@ def fetch_mutual_fund_core_pingzhong(code: str, use_proxy: bool):
             "Chrome/120.0.0.0 Safari/537.36"
         ),
         "Accept": "*/*",
-        "Connection": "keep-alive",
     }
 
-    try:
-        if not use_proxy:
-            with force_no_proxy():
-                res = requests.get(url, headers=headers, timeout=8)
-        else:
-            res = requests.get(url, headers=headers, timeout=8)
+    proxies = {"http": None, "https": None} if not use_proxy else None
 
+    try:
+        res = requests.get(url, headers=headers, proxies=proxies, timeout=8)
         res.raise_for_status()
         text = res.text
 
-        # Data_netWorthTrend = [ {...}, {...}, ... ]
+        # Data_netWorthTrend = [...]
         m = re.search(r"Data_netWorthTrend\s*=\s*(\[[^\]]*\])", text)
         if not m:
             print(f"   ⚠️ [{code}] 未找到 Data_netWorthTrend 段")
@@ -70,7 +48,6 @@ def fetch_mutual_fund_core_pingzhong(code: str, use_proxy: bool):
         arr = json.loads(m.group(1))
         rows = []
         for item in arr:
-            # x: 时间戳(ms)，y: 单位净值
             ts = item.get("x")
             y = item.get("y")
             if ts is None or y is None:
@@ -85,136 +62,128 @@ def fetch_mutual_fund_core_pingzhong(code: str, use_proxy: bool):
         return pd.DataFrame(rows)
 
     except Exception as e:
-        mode = "VPN模式" if use_proxy else "直连模式"
-        print(f"   ⚠️ [{code}] pingzhongdata {mode} 请求/解析失败: {e}")
-        traceback.print_exc()
+        mode = "VPN" if use_proxy else "直连"
+        print(f"   ⚠️ [{code}] pingzhong {mode} 失败: {e}")
         return None
 
 
-def fetch_mutual_fund_core_lsjz(code: str, use_proxy: bool):
-    """
-    内核函数：去天天基金抓数据 (lsjz 接口)
-    use_proxy=True: 使用系统代理(VPN)
-    use_proxy=False: 强制直连
-    """
-    import traceback
-
-    url = "https://api.fund.eastmoney.com/f10/lsjz"  # 注意这里改成 https
-
-    params = {
-        "fundCode": code,
-        "pageIndex": 1,
-        "pageSize": 300,
-        "startDate": "",
-        "endDate": "",
-        # "client": "app",  # 有些示例会加这个，可以视情况打开
-    }
+def fetch_fund_eastmoney(code: str, use_proxy: bool):
+    """源1: 天天基金 (支持直连/代理切换)"""
+    protocol = "https"  # 升级为 HTTPS
+    url = f"{protocol}://api.fund.eastmoney.com/f10/lsjz"
+    params = {"fundCode": code, "pageIndex": 1, "pageSize": 300}
     headers = {
-        "Referer": f"https://fundf10.eastmoney.com/jjjz_{code}.html",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Host": "api.fund.eastmoney.com",
-        "Connection": "keep-alive",
+        "Referer": "http://fundf10.eastmoney.com/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     }
+
+    # 关键配置：如果不用代理，显式设为 None
+    proxies_conf = {"http": None, "https": None} if not use_proxy else None
 
     try:
-        if not use_proxy:
-            with force_no_proxy():
-                res = requests.get(url, params=params, headers=headers, timeout=8)
-        else:
-            res = requests.get(url, params=params, headers=headers, timeout=8)
-
-        res.raise_for_status()
-
+        res = requests.get(
+            url, params=params, headers=headers, proxies=proxies_conf, timeout=6
+        )
         data = res.json()
-
-        # 这里先把返回内容打出来一眼看清
-        if not data or not data.get("Data"):
-            print(f"   ⚠️ [{code}] 接口返回异常 Data 为空: {data}")
-            return None
-
-        if not data["Data"].get("LSJZList"):
-            print(f"   ⚠️ [{code}] 无 LSJZList，完整返回: {data}")
-            return None
-
-        lsjz = data["Data"]["LSJZList"]
-        rows = []
-        for item in lsjz:
-            try:
+        if data and data.get("Data") and data["Data"].get("LSJZList"):
+            rows = []
+            for item in data["Data"]["LSJZList"]:
                 rows.append({"date": item["FSRQ"], "close": float(item["DWJZ"])})
-            except Exception:
-                # 某些行可能是空数据，直接跳过
-                continue
-
-        if not rows:
-            print(f"   ⚠️ [{code}] LSJZList 解析后为空")
-            return None
-
-        rows.reverse()
-        return pd.DataFrame(rows)
-
+            if rows:
+                rows.reverse()
+                return pd.DataFrame(rows)
     except Exception as e:
-        mode = "VPN模式" if use_proxy else "直连模式"
-        print(f"   ⚠️ [{code}] {mode} 请求/解析失败: {e}")
-        traceback.print_exc()
-        return None
+        pass  # 失败静默，交给下一个源
+    return None
+
+
+def fetch_fund_tencent(code: str):
+    """源2: 腾讯财经 (备用，极简接口)"""
+    # 腾讯的接口通常非常稳定，适合做备胎
+    # 格式: http://web.ifzq.gtimg.cn/fund/newfund/fundSjk/getSjk?symbol=jj005827
+    url = "http://web.ifzq.gtimg.cn/fund/newfund/fundSjk/getSjk"
+    params = {"symbol": f"jj{code}", "startDate": "20200101", "limit": 300}
+
+    try:
+        # 腾讯通常直连更快
+        res = requests.get(
+            url, params=params, proxies={"http": None, "https": None}, timeout=6
+        )
+        data = res.json()
+        if data and data.get("data"):
+            # 腾讯数据结构: [[date, net_val, ...], ...]
+            k_data = data["data"].get(f"jj{code}")
+            if k_data:
+                rows = []
+                for item in k_data:
+                    # item[0] 是日期 20231124，需要转格式
+                    d_str = str(item[0])
+                    d_fmt = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
+                    rows.append({"date": d_fmt, "close": float(item[1])})
+                return pd.DataFrame(rows)
+    except Exception as e:
+        print(f"   ⚠️ 腾讯源失败: {e}")
+    return None
 
 
 def fetch_mutual_fund(code: str):
-    print(f"📡 [场外基金] 正在获取: {code} ...")
+    print(f"📡 [场外基金] {code} 开始获取...")
 
-    # ① pingzhongdata 直连
-    df = fetch_mutual_fund_core_pingzhong(code, use_proxy=False)
+    # 0. 首选: pingzhongdata 直连
+    df = fetch_fund_pingzhong(code, use_proxy=False)
+    if df is not None:
+        return df
 
-    # ② pingzhongdata + VPN
-    if df is None or df.empty:
-        print(f"   🔄 pingzhong 直连失败，切换 VPN 通道重试...")
-        df = fetch_mutual_fund_core_pingzhong(code, use_proxy=True)
+    # 1. 天天基金直连
+    df = fetch_fund_eastmoney(code, use_proxy=False)
+    if df is not None:
+        return df
 
-    # ③ 兜底：老 lsjz 接口
-    if df is None or df.empty:
-        print(f"   🔁 尝试使用 lsjz 历史净值接口...")
-        df = fetch_mutual_fund_core_lsjz(code, use_proxy=False)
-        if df is None or df.empty:
-            df = fetch_mutual_fund_core_lsjz(code, use_proxy=True)
+    print(f"   🔄 直连失败，尝试腾讯备用源...")
+    df = fetch_fund_tencent(code)
+    if df is not None:
+        return df
+
+    print(f"   🔄 腾讯失败，尝试 VPN 通道...")
+    # 2. pingzhong + VPN
+    df = fetch_fund_pingzhong(code, use_proxy=True)
+    if df is not None:
+        return df
+
+    # 3. 天天基金 + VPN
+    df = fetch_fund_eastmoney(code, use_proxy=True)
 
     return df
 
 
 # ===========================
-# 2. 场内 ETF/股票 直连 (硬核版)
+# 2. 场内 ETF/股票 (sh000300 等)
 # ===========================
 def fetch_eastmoney_etf(code: str):
-    print(f"📡 [场内ETF] 正在获取: {code} ...")
+    """东财 K线 (强制直连优先)"""
+    print(f"📡 [场内ETF] {code} 开始获取...")
     raw_code = code.replace("sh", "").replace("sz", "")
-    if code.startswith("sh"):
-        secid = f"1.{raw_code}"
-    else:
-        secid = f"0.{raw_code}"
+    secid = f"1.{raw_code}" if code.startswith("sh") else f"0.{raw_code}"
 
     url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
     params = {
         "secid": secid,
-        "fields1": "f1,f2,f3,f4,f5,f6",
-        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "fields1": "f1",
+        "fields2": "f51,f53",
         "klt": "101",
         "fqt": "1",
         "end": "20500101",
         "lmt": "300",
     }
 
-    # 同样使用双通道策略
     # 1. 试直连
     try:
-        with force_no_proxy():
-            res = requests.get(url, params=params, timeout=5)
-            data = res.json()
-            if data["data"]["klines"]:
-                return _parse_etf_data(data)
+        res = requests.get(
+            url, params=params, proxies={"http": None, "https": None}, timeout=5
+        )
+        data = res.json()
+        if data["data"]["klines"]:
+            return _parse_etf_data(data)
     except:
         pass
 
@@ -234,7 +203,7 @@ def _parse_etf_data(data):
     rows = []
     for line in data["data"]["klines"]:
         arr = line.split(",")
-        rows.append({"date": arr[0], "close": float(arr[2])})
+        rows.append({"date": arr[0], "close": float(arr[1])})
     return pd.DataFrame(rows)
 
 
@@ -242,17 +211,17 @@ def _parse_etf_data(data):
 # 3. 辅助源：Yahoo
 # ===========================
 def fetch_from_yahoo(code: str):
-    # 仅作为最后的备选，代码略简
     raw_code = code.replace("sh", "").replace("sz", "")
     y_code = f"{raw_code}.SS" if "sh" in code else f"{raw_code}.SZ"
     try:
+        # 移除 session 参数，防止报错
         df = yf.download(
             y_code,
             period="1y",
             interval="1d",
             auto_adjust=True,
             progress=False,
-            timeout=5,
+            timeout=8,
         )
         if not df.empty:
             df = df.reset_index()
@@ -279,40 +248,40 @@ def get_strategy_advice(code: str, name: str = "未知标的"):
             return cached_item["data"]
 
     df = None
-
-    # === 智能路由 ===
     is_etf = "sh" in code or "sz" in code
 
     if is_etf:
-        # 场内：东财 -> Yahoo
         df = fetch_eastmoney_etf(code)
         if df is None:
             df = fetch_from_yahoo(code)
     else:
-        # 场外：天天基金
         df = fetch_mutual_fund(code)
 
     if df is None or df.empty:
-        print(f"❌ {code} 获取失败")
+        # 失败时返回具体的错误类型，方便前端显示
         return {
             "fund_code": code,
             "name": name,
             "action": "ERROR",
-            "reason": "数据源连接失败",
+            "reason": "所有线路均无法连接，请检查网络",
             "history": [],
         }
 
-    # === 数据计算 ===
     try:
         import numpy as np
 
         df.columns = [str(c).lower() for c in df.columns]
+
+        # 模糊匹配列名
         if "fsrq" in df.columns:
             df.rename(columns={"fsrq": "date", "dwjz": "close"}, inplace=True)
         if "date" not in df.columns:
-            df.rename(columns={"日期": "date", "Date": "date"}, inplace=True)
+            # 尝试 date/Date
+            if "Date" in df.columns:
+                df.rename(columns={"Date": "date"}, inplace=True)
         if "close" not in df.columns:
-            df.rename(columns={"收盘": "close", "Close": "close"}, inplace=True)
+            if "Close" in df.columns:
+                df.rename(columns={"Close": "close"}, inplace=True)
 
         df["date"] = pd.to_datetime(df["date"])
         df["close"] = pd.to_numeric(df["close"])
@@ -352,12 +321,12 @@ def get_strategy_advice(code: str, name: str = "未知标的"):
         }
 
         _market_cache[code] = {"data": result, "timestamp": current_time}
-        print(f"✅ {code} 获取成功 (净值: {curr})")
+        print(f"✅ {code} 成功 (价格: {curr})")
         return result
 
     except Exception as e:
-        print(f"❌ 计算失败: {e}")
+        print(f"❌ 数据解析异常: {e}")
         import traceback
 
         traceback.print_exc()
-        return {"fund_code": code, "action": "ERROR", "reason": str(e)}
+        return {"fund_code": code, "action": "ERROR", "reason": f"解析失败: {str(e)}"}

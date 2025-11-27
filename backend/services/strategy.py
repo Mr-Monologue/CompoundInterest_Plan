@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 from datetime import date, datetime
 from db.models import FundState, DailyPlan
+from db.state import get_global_state
 from services.market import get_strategy_advice
 import math
 
@@ -98,13 +99,15 @@ def get_instant_analysis(code: str, session: Session):
     if mdata.get("action") == "ERROR":
         return mdata
 
-    state = get_or_create_state(session, code)
+    # 从全局状态获取准备金（新架构）
+    global_state = get_global_state(session)
+    reserve_balance = global_state.global_reserve
 
     level, invest, _, _, grid_pos, reason = calculate_grid_logic(
         mdata["current_price"],
         mdata["ma200"],
         mdata["vol_daily"],
-        state.reserve_balance,
+        reserve_balance,
     )
 
     action_str = "BUY" if invest > 0 else "SELL"
@@ -128,22 +131,31 @@ def run_strategy_analysis(code: str, session: Session):
     if mdata.get("action") == "ERROR":
         raise Exception(mdata.get("reason"))
 
-    # 2. 获取状态
-    state = get_or_create_state(session, code)
+    # 2. 获取全局状态（新架构：准备金是全局的）
+    global_state = get_global_state(session)
+    reserve_before = global_state.global_reserve
 
     # 3. 计算
     level, invest, to_res, from_res, grid_pos, reason = calculate_grid_logic(
         mdata["current_price"],
         mdata["ma200"],
         mdata["vol_daily"],
-        state.reserve_balance,
+        reserve_before,
     )
 
-    # 4. 更新数据库
-    new_reserve = state.reserve_balance + to_res - from_res
-    today_str = date.today().isoformat()
+    # 4. 更新全局准备金
+    reserve_after = reserve_before + to_res - from_res
+    global_state.global_reserve = reserve_after
+    session.add(global_state)
 
-    # 删旧记录
+    # 5. 更新基金状态（记录累计使用量）
+    fund_state = get_or_create_state(session, code)
+    fund_state.cumulative_reserve_usage += from_res - to_res  # 正数=拿走，负数=贡献
+    fund_state.last_signal_date = date.today().isoformat()
+    session.add(fund_state)
+
+    # 6. 记录 DailyPlan
+    today_str = date.today().isoformat()
     existing = session.exec(
         select(DailyPlan).where(
             DailyPlan.asset_code == code, DailyPlan.date == today_str
@@ -162,14 +174,10 @@ def run_strategy_analysis(code: str, session: Session):
         base_amt=WEEKLY_BUDGET,
         dyn_amt=from_res if from_res > 0 else -to_res,  # 正=取, 负=存
         total_amt=invest,
-        reserve_before=state.reserve_balance,
-        reserve_after=new_reserve,
+        reserve_before=reserve_before,
+        reserve_after=reserve_after,
     )
     session.add(plan)
-
-    state.reserve_balance = new_reserve
-    state.last_signal_date = today_str
-    session.add(state)
     session.commit()
 
     return {
@@ -178,14 +186,14 @@ def run_strategy_analysis(code: str, session: Session):
         "grid_pos": f"{grid_pos:.1f}",
         "advice": f"建议买入 ¥{invest:.0f}",
         "details": reason,
-        "reserve_balance": new_reserve,
+        "reserve_balance": reserve_after,
     }
 
 
 def get_or_create_state(session: Session, code: str):
     state = session.exec(select(FundState).where(FundState.asset_code == code)).first()
     if not state:
-        state = FundState(asset_code=code, reserve_balance=0.0)
+        state = FundState(asset_code=code, cumulative_reserve_usage=0.0)
         session.add(state)
         session.commit()
         session.refresh(state)

@@ -24,6 +24,8 @@ from services.strategy import (
     generate_weekly_report_text,
     get_instant_analysis,
 )
+from services.portfolio import run_portfolio_strategy
+from db.state import get_global_state
 
 
 # === 生命周期：启动时建表 ===
@@ -57,6 +59,7 @@ class TransactionCreate(BaseModel):
     type: str  # "BUY" 或 "SELL"
     price: float
     amount: float
+    fee: float = 0.0  # 手续费（可选，如果为0则自动计算）
     date: str = None
 
 
@@ -89,6 +92,24 @@ def create_asset(asset: AssetCreate, session: Session = Depends(get_session)):
     return db_asset
 
 
+# === 新增：删除资产 ===
+@app.delete("/api/assets/{asset_id}")
+def delete_asset(asset_id: int, session: Session = Depends(get_session)):
+    asset = session.get(Asset, asset_id)
+    if not asset:
+        return {"error": "Asset not found"}
+
+    # 删除资产记录
+    session.delete(asset)
+
+    # 选做：如果你希望删除资产时，顺便把它的"存钱罐状态"也清空，可以加上下面这两行：
+    # state = session.exec(select(FundState).where(FundState.asset_code == asset.code)).first()
+    # if state: session.delete(state)
+
+    session.commit()
+    return {"ok": True}
+
+
 # 3. 行情与建议 (实时)
 @app.get("/api/advice/{code}")
 def get_advice(code: str, session: Session = Depends(get_session)):
@@ -99,12 +120,27 @@ def get_advice(code: str, session: Session = Depends(get_session)):
 # 4. 交易记录
 @app.post("/api/transactions")
 def create_transaction(tx: TransactionCreate, session: Session = Depends(get_session)):
-    units = tx.amount / tx.price
+    # 逻辑：前端如果没有传 fee，我们帮他自动算
+
+    calc_fee = tx.fee
+    # 如果前端传的 fee 是 0，且这不是卖出操作（卖出费率复杂，暂时忽略或由用户手填），我们估算买入费
+    if calc_fee == 0 and tx.type == "BUY":
+        rate = 0.0015 if tx.asset_code.isdigit() else 0.0002
+        # 应用官方公式
+        net_amt = tx.amount / (1 + rate)
+        calc_fee = tx.amount - net_amt
+
+    net_amount = tx.amount - calc_fee
+
+    # 份额 = 净金额 / 单价
+    units = net_amount / tx.price
+
     db_tx = Transaction(
         asset_code=tx.asset_code,
         type=tx.type,
         price=tx.price,
         amount=tx.amount,
+        fee=calc_fee,
         units=units,
         date=datetime.now() if not tx.date else datetime.strptime(tx.date, "%Y-%m-%d"),
     )
@@ -155,6 +191,36 @@ def run_strategy(code: str, session: Session = Depends(get_session)):
 def get_report(code: str, days: int = 7, session: Session = Depends(get_session)):
     report = generate_weekly_report_text(code, session, days)
     return {"report": report}
+
+
+# === 🔥 6. 全局投资计划 (新功能) 🔥 ===
+
+
+# === API: 获取全局状态 (看板用) ===
+@app.get("/api/plan/state")
+def get_plan_state(session: Session = Depends(get_session)):
+    state = get_global_state(session)
+    # 计算本周剩余
+    left = state.weekly_budget - state.budget_used_this_week
+    return {
+        "weekly_budget": state.weekly_budget,
+        "budget_left": max(0, left),
+        "global_reserve": state.global_reserve,
+        "week_start": state.current_week_start,
+    }
+
+
+# === API: 一键执行全组合策略 ===
+@app.post("/api/plan/run")
+def run_all_strategies(session: Session = Depends(get_session)):
+    try:
+        result = run_portfolio_strategy(session)
+        return result
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":

@@ -18,31 +18,22 @@ class Transaction(SQLModel, table=True):
     date: datetime = Field(default_factory=datetime.now)
     type: str  # "BUY" or "SELL"
     price: float  # 成交价
-    amount: float  # 成交金额
-    units: float  # 成交份额 (金额/价格)
+    amount: float  # 成交金额（总金额，包含手续费）
+    fee: float = 0.0  # 手续费
+    units: float  # 成交份额 (净金额/价格)
 
 
 # === ⬇️ 新增：策略引擎专用表 ⬇️ ===
 
 
-# 1. 基金状态表 (存钱罐)
-# 记录每个基金当前的准备金余额，以及上次更新的时间
+# === ⬇️ 修改：FundState (单标的状态) ⬇️ ===
+# 我们不再依赖这里的 reserve_balance 做决策，但可以保留它记录"该基金累计贡献/消耗了多少储备"
 class FundState(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    asset_code: str = Field(index=True, unique=True)  # 关联基金代码
-
-    reserve_balance: float = 0.0  # 准备金余额
-
-    # === 新增字段 ===
-    year_invested: float = 0.0  # 本年度已投入金额 (用于控年度上限)
-    max_year_quota: float = 12000.0  # 年度最大预算 (默认1.2万，可改)
-    last_buy_date: Optional[str] = Field(
-        default=None, nullable=True
-    )  # 上次发生"买入"的日期 (用于90天扫入)
-
-    last_signal_date: Optional[str] = Field(
-        default=None, nullable=True
-    )  # 上次产生信号的日期 (YYYY-MM-DD)
+    asset_code: str = Field(index=True, unique=True)
+    # ⚠️ 注意：这个字段现在的含义变了 -> "历史累计从总池子里拿走的净额" (正数=拿走，负数=贡献)
+    cumulative_reserve_usage: float = 0.0
+    last_signal_date: Optional[str] = Field(default=None, nullable=True)
     updated_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -67,3 +58,17 @@ class DailyPlan(SQLModel, table=True):
     # 状态快照 (用于回溯)
     reserve_before: float
     reserve_after: float
+
+
+# === ⬇️ 新增：全局投资计划表 (PlanState) ⬇️ ===
+# 这张表永远只会有一行数据，ID=1
+class PlanState(SQLModel, table=True):
+    id: Optional[int] = Field(default=1, primary_key=True)
+
+    weekly_budget: float = 200.0  # 每周基础预算 (例如 200)
+    global_reserve: float = 0.0  # 💰 全局准备金池 (所有基金共享)
+
+    current_week_start: str = None  # 本周起始日 (用于判断是否跨周重置)
+    budget_used_this_week: float = 0.0  # 本周已使用的预算 (0 ~ 200)
+
+    updated_at: datetime = Field(default_factory=datetime.now)
