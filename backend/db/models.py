@@ -10,6 +10,10 @@ class Asset(SQLModel, table=True):
     name: str  # 名称，如 "沪深300"
     type: str = "ETF"  # 类型
 
+    # 🔥 新增：单资产最大持仓占比限制 (0.0 ~ 1.0)
+    # 默认给 0.2 (20%)，防止单吊
+    max_weight_limit: float = Field(default=0.2)
+
 
 # 2. 交易表：存储你的买卖记录
 class Transaction(SQLModel, table=True):
@@ -60,15 +64,20 @@ class DailyPlan(SQLModel, table=True):
     reserve_after: float
 
 
-# === ⬇️ 新增：全局投资计划表 (PlanState) ⬇️ ===
-# 这张表永远只会有一行数据，ID=1
+# === ⬇️ 修改：全局计划表 (PlanState) ⬇️ ===
 class PlanState(SQLModel, table=True):
     id: Optional[int] = Field(default=1, primary_key=True)
 
-    weekly_budget: float = 200.0  # 每周基础预算 (例如 200)
-    global_reserve: float = 0.0  # 💰 全局准备金池 (所有基金共享)
+    # 1. 资金池 (实体账户)
+    pool_balance: float = 0.0  # 💰 当前账户里的可用现金 (可用于投资的钱)
 
-    current_week_start: str = None  # 本周起始日 (用于判断是否跨周重置)
-    budget_used_this_week: float = 0.0  # 本周已使用的预算 (0 ~ 200)
+    # 2. 策略配置 (规则)
+    base_investment: float = (
+        200.0  # 🎯 定投基准额度 (用于计算网格倍数的基础单位，比如 Z=0 时投多少)
+    )
+
+    # 3. 自动充值规则 (可选，预留字段)
+    deposit_frequency: str = "MANUAL"  # MANUAL(手动), WEEKLY(每周), MONTHLY(每月)
+    auto_deposit_amount: float = 0.0  # 自动充值金额
 
     updated_at: datetime = Field(default_factory=datetime.now)

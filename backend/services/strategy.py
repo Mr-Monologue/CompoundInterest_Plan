@@ -99,9 +99,9 @@ def get_instant_analysis(code: str, session: Session):
     if mdata.get("action") == "ERROR":
         return mdata
 
-    # 从全局状态获取准备金（新架构）
-    global_state = get_global_state(session)
-    reserve_balance = global_state.global_reserve
+    # 新架构：单标的分析不再使用独立准备金，传入 0
+    # 资金池管理在 portfolio.py 中统一处理
+    reserve_balance = 0
 
     level, invest, _, _, grid_pos, reason = calculate_grid_logic(
         mdata["current_price"],
@@ -131,9 +131,9 @@ def run_strategy_analysis(code: str, session: Session):
     if mdata.get("action") == "ERROR":
         raise Exception(mdata.get("reason"))
 
-    # 2. 获取全局状态（新架构：准备金是全局的）
-    global_state = get_global_state(session)
-    reserve_before = global_state.global_reserve
+    # 2. 新架构：单标的分析不再使用独立准备金，传入 0
+    # 资金池管理在 portfolio.py 中统一处理
+    reserve_before = 0
 
     # 3. 计算
     level, invest, to_res, from_res, grid_pos, reason = calculate_grid_logic(
@@ -143,10 +143,8 @@ def run_strategy_analysis(code: str, session: Session):
         reserve_before,
     )
 
-    # 4. 更新全局准备金
-    reserve_after = reserve_before + to_res - from_res
-    global_state.global_reserve = reserve_after
-    session.add(global_state)
+    # 4. 新架构：不再更新全局准备金（资金池在 portfolio.py 中统一管理）
+    reserve_after = reserve_before  # 保持不变，因为不再使用准备金机制
 
     # 5. 更新基金状态（记录累计使用量）
     fund_state = get_or_create_state(session, code)

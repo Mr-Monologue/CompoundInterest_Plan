@@ -24,8 +24,11 @@ from services.strategy import (
     generate_weekly_report_text,
     get_instant_analysis,
 )
-from services.portfolio import run_portfolio_strategy
-from db.state import get_global_state
+from services.portfolio import (
+    run_portfolio_strategy,
+    get_global_state,
+    adjust_pool_balance,
+)
 
 
 # === 生命周期：启动时建表 ===
@@ -52,6 +55,7 @@ app.add_middleware(
 class AssetCreate(BaseModel):
     code: str
     name: str
+    max_weight_limit: float = 0.2  # 默认20%
 
 
 class TransactionCreate(BaseModel):
@@ -61,6 +65,7 @@ class TransactionCreate(BaseModel):
     amount: float
     fee: float = 0.0  # 手续费（可选，如果为0则自动计算）
     date: str = None
+    from_pool: bool = True  # 🔥 新增：是否从资金池扣款 (默认是)
 
 
 # =======================
@@ -85,7 +90,11 @@ def create_asset(asset: AssetCreate, session: Session = Depends(get_session)):
     existing = session.exec(select(Asset).where(Asset.code == asset.code)).first()
     if existing:
         return existing
-    db_asset = Asset(code=asset.code, name=asset.name)
+    db_asset = Asset(
+        code=asset.code,
+        name=asset.name,
+        max_weight_limit=asset.max_weight_limit,  # 写入数据库
+    )
     session.add(db_asset)
     session.commit()
     session.refresh(db_asset)
@@ -135,6 +144,7 @@ def create_transaction(tx: TransactionCreate, session: Session = Depends(get_ses
     # 份额 = 净金额 / 单价
     units = net_amount / tx.price
 
+    # 1. 记录交易
     db_tx = Transaction(
         asset_code=tx.asset_code,
         type=tx.type,
@@ -145,6 +155,18 @@ def create_transaction(tx: TransactionCreate, session: Session = Depends(get_ses
         date=datetime.now() if not tx.date else datetime.strptime(tx.date, "%Y-%m-%d"),
     )
     session.add(db_tx)
+
+    # 2. 🔥 如果勾选了从池子扣，扣减 Pool 🔥
+    if tx.type == "BUY" and tx.from_pool:
+        state = get_global_state(session)
+        if state.pool_balance >= tx.amount:
+            state.pool_balance -= tx.amount
+            session.add(state)
+        else:
+            # 也可以选择报错，或者扣成负数，这里简单扣成负数也没事，代表透支
+            state.pool_balance -= tx.amount
+            session.add(state)
+
     session.commit()
     session.refresh(db_tx)
     return db_tx
@@ -172,6 +194,63 @@ def get_portfolio_stats(code: str, session: Session = Depends(get_session)):
     }
 
 
+# === 新增：获取交易历史 ===
+@app.get("/api/transactions/{code}")
+def get_transactions(code: str, session: Session = Depends(get_session)):
+    """获取某个资产的所有交易记录"""
+    txs = session.exec(
+        select(Transaction)
+        .where(Transaction.asset_code == code)
+        .order_by(Transaction.date.desc())
+    ).all()
+    return txs
+
+
+# === 新增：修改交易 ===
+@app.put("/api/transactions/{tx_id}")
+def update_transaction(
+    tx_id: int, new_data: TransactionCreate, session: Session = Depends(get_session)
+):
+    """修改交易 (更新金额/价格/日期)"""
+    tx = session.get(Transaction, tx_id)
+    if not tx:
+        return {"error": "未找到记录"}
+
+    # 💡 这是一个复杂问题：修改交易是否要回滚资金池？
+    # 为了简化逻辑，建议：修改只改记录本身，不动资金池。
+    # 如果要动资金池，建议用户"删除重记"。
+
+    # 更新字段
+    tx.price = new_data.price
+    tx.amount = new_data.amount
+    # 重新计算份额
+    net_amt = tx.amount - tx.fee  # 简便起见假设 fee 不变或由前端传
+    tx.units = net_amt / tx.price
+
+    session.add(tx)
+    session.commit()
+    session.refresh(tx)
+    return tx
+
+
+# === 新增：删除交易 ===
+@app.delete("/api/transactions/{tx_id}")
+def delete_transaction(tx_id: int, session: Session = Depends(get_session)):
+    """删除交易"""
+    tx = session.get(Transaction, tx_id)
+    if not tx:
+        return {"error": "未找到"}
+
+    # 🔥 删除时，是否把钱退回资金池？
+    # 这是一个设计选择。通常建议：如果当时是从池子扣的，删除时应该退回去。
+    # 但因为 Transaction 表没记"是否来自池子"，这里简单处理：不退。
+    # 用户可以在资金池手动"充值"来平账。
+
+    session.delete(tx)
+    session.commit()
+    return {"ok": True}
+
+
 # === 🔥 5. 策略复盘 (新功能) 🔥 ===
 
 
@@ -196,17 +275,61 @@ def get_report(code: str, days: int = 7, session: Session = Depends(get_session)
 # === 🔥 6. 全局投资计划 (新功能) 🔥 ===
 
 
-# === API: 获取全局状态 (看板用) ===
+# === API: 获取 Pool 状态 ===
+@app.get("/api/pool")
+def get_pool_info(session: Session = Depends(get_session)):
+    state = get_global_state(session)
+    return {
+        "pool_balance": state.pool_balance,
+        "base_investment": state.base_investment,
+        "deposit_frequency": state.deposit_frequency,
+    }
+
+
+# === API: 资金池充值 (Top-up) ===
+@app.post("/api/pool/deposit")
+def deposit_pool(data: dict, session: Session = Depends(get_session)):
+    # data: {"amount": 1000}
+    amount = float(data.get("amount", 0))
+    if amount <= 0:
+        return {"error": "金额必须大于0"}
+
+    state = adjust_pool_balance(session, amount, "DEPOSIT")
+    return {"ok": True, "new_balance": state.pool_balance}
+
+
+# === API: 更新配置 (修改定投基准 或 直接修正资金池余额) ===
+@app.post("/api/pool/config")
+def update_pool_config(data: dict, session: Session = Depends(get_session)):
+    # data: {"base_investment": 300, "pool_balance": 500}
+    state = get_global_state(session)
+
+    # 1. 修改基准
+    if "base_investment" in data:
+        state.base_investment = float(data["base_investment"])
+
+    # 2. 🔥 新增：直接修正资金池余额 🔥
+    if "pool_balance" in data:
+        # 允许用户直接指定一个数字，比如 200
+        state.pool_balance = float(data["pool_balance"])
+
+    session.add(state)
+    session.commit()
+    return {
+        "ok": True,
+        "base_investment": state.base_investment,
+        "pool_balance": state.pool_balance,
+    }
+
+
+# === API: 获取全局状态 (看板用) - 保留兼容性 ===
 @app.get("/api/plan/state")
 def get_plan_state(session: Session = Depends(get_session)):
     state = get_global_state(session)
-    # 计算本周剩余
-    left = state.weekly_budget - state.budget_used_this_week
     return {
-        "weekly_budget": state.weekly_budget,
-        "budget_left": max(0, left),
-        "global_reserve": state.global_reserve,
-        "week_start": state.current_week_start,
+        "pool_balance": state.pool_balance,
+        "base_investment": state.base_investment,
+        "deposit_frequency": state.deposit_frequency,
     }
 
 

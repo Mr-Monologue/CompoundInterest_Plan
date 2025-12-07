@@ -1,195 +1,181 @@
 from sqlmodel import Session, select
-from datetime import date, datetime, timedelta
-from db.models import PlanState, FundState, Asset, Transaction, DailyPlan
+
+from db.models import Asset, Transaction
+
 from services.market import get_strategy_advice
+
 from services.strategy import calculate_grid_logic
 
-# === ⚙️ 交易参数配置 ===
-MIN_TRADE_AMOUNT = 50.0  # 最小起投金额 (少于这个不买，攒着)
-DEFAULT_BUY_FEE = 0.0015  # 默认申购费率 0.15% (支付宝/天天基金常用优惠费率)
+from db.state import get_global_state
 
 
-def get_global_state(session: Session):
-    state = session.exec(select(PlanState).where(PlanState.id == 1)).first()
-    if not state:
-        today = date.today()
-        monday = today - timedelta(days=today.weekday())
-        state = PlanState(
-            id=1,
-            weekly_budget=200.0,
-            global_reserve=0.0,
-            current_week_start=monday.isoformat(),
-            budget_used_this_week=0.0,
-        )
-        session.add(state)
-        session.commit()
-        session.refresh(state)
+# === ⚙️ 交易参数 ===
+MIN_TRADE_AMOUNT = 50.0
+DEFAULT_BUY_FEE = 0.0015
 
-    # 跨周重置
-    today = date.today()
-    monday = today - timedelta(days=today.weekday())
-    monday_str = monday.isoformat()
-    if state.current_week_start != monday_str:
-        state.current_week_start = monday_str
-        state.budget_used_this_week = 0.0
-        session.add(state)
-        session.commit()
-        session.refresh(state)
+
+# === 新增：资金池充值/提现 ===
+def adjust_pool_balance(session: Session, amount: float, operation: str = "DEPOSIT"):
+    state = get_global_state(session)
+    if operation == "DEPOSIT":
+        state.pool_balance += amount
+    elif operation == "WITHDRAW":
+        state.pool_balance -= amount
+
+    session.add(state)
+    session.commit()
+    session.refresh(state)
     return state
 
 
 def run_portfolio_strategy(session: Session):
     plan = get_global_state(session)
-    remaining_budget = plan.weekly_budget - plan.budget_used_this_week
+    current_pool = plan.pool_balance
 
     assets = session.exec(select(Asset)).all()
     candidates = []
-    logs = []
 
-    # 1. 收集所有标的的状态
+    # === 第 1 轮：算总市值 ===
+    total_market_value = 0.0
+
     for asset in assets:
         mdata = get_strategy_advice(asset.code, asset.name)
         if mdata.get("action") == "ERROR":
-            logs.append(f"❌ {asset.name}: 数据获取失败")
             continue
 
+        # 1. 查持仓份额
+        txs = session.exec(
+            select(Transaction).where(Transaction.asset_code == asset.code)
+        ).all()
+        units = sum(t.units for t in txs if t.type == "BUY") - sum(
+            t.units for t in txs if t.type == "SELL"
+        )
+
+        # 2. 算当前市值
+        current_mv = units * mdata["current_price"]
+        total_market_value += current_mv
+
+        # 3. 算网格
         level, _, _, _, grid_pos, reason = calculate_grid_logic(
             mdata["current_price"], mdata["ma200"], mdata["vol_daily"], 0
         )
 
         candidates.append(
-            {"asset": asset, "mdata": mdata, "grid_pos": grid_pos, "level": level}
+            {
+                "asset": asset,
+                "mdata": mdata,
+                "grid_pos": grid_pos,
+                "level": level,
+                "current_mv": current_mv,
+            }
         )
 
-    # 2. 按低估程度排序 (越低越优先)
+    # === 计算总资产净值 ===
+    total_net_worth = total_market_value + current_pool
+    if total_net_worth < 1000:
+        total_net_worth = 1000
+
+    # === 第 2 轮：排序 ===
     candidates.sort(key=lambda x: x["grid_pos"])
 
-    total_invested_today = 0.0
+    # === 第 3 轮：生成建议清单 (带详细解释) ===
+    suggestions = []
+    sim_pool_balance = current_pool
 
-    # 3. 分配资金
     for item in candidates:
         asset = item["asset"]
         grid = item["grid_pos"]
-        mdata = item["mdata"]
+        current_mv = item["current_mv"]
 
-        # 高估跳过
-        if grid > 2.0:
-            logs.append(f"📉 {asset.name}: 高估({grid:.1f})，跳过")
-            continue
-
-        # 计算理论应投金额
-        base_need = 200.0
+        # --- 基础计算 ---
+        base_need = plan.base_investment
         multiplier = 1.0
         if grid <= -2.0:
             multiplier = 1.5 * (1.2 ** (abs(grid) - 2.0))
         elif grid > 0:
             multiplier = 1.0 - (grid * 0.5)
 
-        target_amt = base_need * multiplier
+        # 原始建议金额 (未受限前)
+        raw_target_amt = base_need * multiplier
 
-        # 预计算资金来源 (尚未真正扣款)
-        take_from_budget = 0.0
-        take_from_reserve = 0.0
+        # --- 🚦 风控检查 ---
+        current_weight = current_mv / total_net_worth
+        max_weight = getattr(asset, "max_weight_limit", 0.2)
 
-        # 先吃周预算
-        if remaining_budget > 0:
-            take_from_budget = min(target_amt, remaining_budget)
-            target_amt -= take_from_budget
+        brake_factor = 1.0
+        brake_reason = ""
 
-        # 不够吃准备金
-        if target_amt > 0 and grid < -1.0 and plan.global_reserve > 0:
-            take_from_reserve = min(target_amt, plan.global_reserve)
+        if current_weight >= max_weight:
+            brake_factor = 0.0
+            # 🔥 解释：为什么不买？因为仓位爆了
+            brake_reason = f"🚫 仓位({current_weight*100:.1f}%)超限({max_weight*100:.0f}%)，风控强制禁买"
+        elif current_weight >= (max_weight * 0.8):
+            ratio = 1.0 - (current_weight - max_weight * 0.8) / (max_weight * 0.2)
+            brake_factor = max(0.0, ratio)
+            # 🔥 解释：为什么买少了？因为快超限了
+            brake_reason = f"⚠️ 仓位接近上限，买入打折 {brake_factor*100:.0f}%"
 
-        final_invest = take_from_budget + take_from_reserve
-
-        # === 🔥 核心修复：先判断门槛，再扣款 🔥 ===
-
-        if final_invest >= MIN_TRADE_AMOUNT:
-            # 取整
-            final_invest = round(final_invest / 10) * 10
-
-            # 资金来源分配 (保持不变)
-            real_from_budget = min(final_invest, remaining_budget)
-            real_from_reserve = final_invest - real_from_budget
-            remaining_budget -= real_from_budget
-            plan.global_reserve -= real_from_reserve
-
-            # === 🔥 核心修改：费率计算逻辑 🔥 ===
-
-            # 1. 区分 场内ETF(sh/sz) 和 场外基金(纯数字)
-            is_otc = asset.code.isdigit()
-
-            # 2. 设定费率
-            # 场外基金：支付宝标准一折优惠 = 0.15% (0.0015)
-            # 场内ETF：券商佣金通常万1~万3，这里按万2 (0.0002) 估算
-            rate = 0.0015 if is_otc else 0.0002
-
-            # 3. 应用支付宝官方公式：净金额 = 总金额 / (1 + 费率)
-            net_amount = final_invest / (1 + rate)
-            fee = final_invest - net_amount
-
-            # 4. 记录交易
-            _record_transaction(
-                session,
-                asset.code,
-                "BUY",
-                mdata["current_price"],
-                final_invest,
-                fee,
-                net_amount,
+        # A. 如果被完全刹停
+        if brake_factor == 0:
+            suggestions.append(
+                {
+                    "code": asset.code,
+                    "name": asset.name,
+                    "amt": 0,
+                    "msg": f"{brake_reason} (原计划投¥{raw_target_amt:.0f})",
+                }
             )
+            continue
 
-            total_invested_today += final_invest
-
-            source_str = f"预算{real_from_budget:.0f}"
-            if real_from_reserve > 0:
-                source_str += f"+准备金{real_from_reserve:.0f}"
-            logs.append(
-                f"✅ {asset.name}: 投¥{final_invest} (费¥{fee:.2f}) [{source_str}]"
+        # B. 如果估值太高
+        if grid > 2.0:
+            suggestions.append(
+                {
+                    "code": asset.code,
+                    "name": asset.name,
+                    "amt": 0,
+                    "msg": f"📉 高估({grid:.1f}格)，建议观望",
+                }
             )
+            continue
 
-        elif final_invest > 0:
-            # 金额太小，被过滤，不扣钱！
-            logs.append(
-                f"⏸️ {asset.name}: 建议 ¥{final_invest:.1f} < 门槛{MIN_TRADE_AMOUNT}，忽略，资金保留"
+        # C. 计算最终金额
+        target_amt = raw_target_amt * brake_factor
+
+        # 资金池模拟扣款
+        actual_invest = min(target_amt, sim_pool_balance)
+
+        # D. 财务门槛检查
+        if actual_invest >= MIN_TRADE_AMOUNT:
+            actual_invest = round(actual_invest / 10) * 10
+            sim_pool_balance -= actual_invest
+
+            # 正常买入文案
+            msg = f"✅ 网格{grid:.1f}，建议买入"
+            if brake_reason:
+                msg = f"{msg} ({brake_reason})"  # 加上限流提示
+
+            suggestions.append(
+                {
+                    "code": asset.code,
+                    "name": asset.name,
+                    "amt": actual_invest,
+                    "msg": msg,
+                }
+            )
+        elif actual_invest > 0:
+            # 🔥 解释：为什么有钱但不买？因为太碎了
+            suggestions.append(
+                {
+                    "code": asset.code,
+                    "name": asset.name,
+                    "amt": 0,
+                    "msg": f"👛 建议额¥{actual_invest:.0f} 低于起投门槛(¥{MIN_TRADE_AMOUNT})，暂攒着",
+                }
             )
         else:
-            logs.append(f"⏸️ {asset.name}: 无需买入")
+            suggestions.append(
+                {"code": asset.code, "name": asset.name, "amt": 0, "msg": "无需操作"}
+            )
 
-    # 4. 更新全局状态
-    # 用掉的预算 = 原始预算 - 现在的剩余
-    plan.budget_used_this_week = plan.weekly_budget - remaining_budget
-
-    session.add(plan)
-    session.commit()
-
-    return {
-        "logs": logs,
-        "global_status": {
-            "budget_left": remaining_budget,
-            "global_reserve": plan.global_reserve,
-            "total_invested": total_invested_today,
-        },
-    }
-
-
-def _record_transaction(session, code, type, price, total_amount, fee, net_amount):
-    """
-    记录交易
-    total_amount: 总流出资金 (比如 1000)
-    fee: 手续费 (比如 1.5)
-    net_amount: 实际买入资产的钱 (998.5)
-    """
-    # 份额 = 净金额 / 单价
-    units = net_amount / price
-
-    tx = Transaction(
-        asset_code=code,
-        type=type,
-        price=price,
-        amount=total_amount,
-        fee=fee,  # 记录手续费
-        units=units,
-        date=datetime.now(),
-    )
-    session.add(tx)
+    return {"suggestions": suggestions, "pool_remain_sim": sim_pool_balance}

@@ -4,7 +4,7 @@ import {
   TrendingUp, Plus, Wallet, Activity, RefreshCw, 
   BarChart3, ArrowUpRight, ArrowDownRight, 
   PieChart, FileText, Zap, Layers, AlertCircle, Loader2,
-  Trash2, DollarSign, Target, Percent
+  Trash2, DollarSign, Target, Percent, Settings
 } from 'lucide-react';
 import './App.css';
 
@@ -22,7 +22,13 @@ function App() {
   const [report, setReport] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [globalState, setGlobalState] = useState({ budget_left: 0, global_reserve: 0 });
+  // 新增 Pool 相关的状态
+  const [poolState, setPoolState] = useState({ pool_balance: 0, base_investment: 200 });
+  const [showDeposit, setShowDeposit] = useState(false); // 充值弹窗开关
+  const [depositAmount, setDepositAmount] = useState("");
+  const [showConfig, setShowConfig] = useState(false);   // 设置弹窗开关
+  const [newBase, setNewBase] = useState("");
+  const [newBalance, setNewBalance] = useState(""); // 🔥 新增：用于编辑余额
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [showTransForm, setShowTransForm] = useState(false);
@@ -33,14 +39,26 @@ function App() {
   const [transType, setTransType] = useState("BUY");
   const [inputMode, setInputMode] = useState<"amount" | "shares">("amount");
   const [transShares, setTransShares] = useState("");
+  const [fromPool, setFromPool] = useState(true); // 从资金池扣款
+  const [showSuggestions, setShowSuggestions] = useState(false); // 建议清单弹窗
+  const [suggestions, setSuggestions] = useState<any[]>([]); // 建议列表
+  const [showHistory, setShowHistory] = useState(false); // 历史记录显示
+  const [transactions, setTransactions] = useState<any[]>([]); // 交易历史
 
   useEffect(() => { 
     fetchAssets(); 
-    fetchGlobalState();
+    fetchPool(); // <--- 改这里
   }, []);
 
   const fetchAssets = () => { fetch('http://127.0.0.1:8000/api/assets').then(res => res.json()).then(setAssets); };
-  const fetchGlobalState = () => { fetch('http://127.0.0.1:8000/api/plan/state').then(res=>res.json()).then(setGlobalState); };
+  // 获取池子状态
+  const fetchPool = () => {
+    fetch('http://127.0.0.1:8000/api/pool').then(res=>res.json()).then(data => {
+      setPoolState(data);
+      setNewBase(String(data.base_investment));
+      setNewBalance(String(data.pool_balance)); // 🔥 新增：同步余额到输入框
+    });
+  };
   const fetchReport = (code: string) => { fetch(`http://127.0.0.1:8000/api/strategy/report/${code}`).then(res => res.json()).then(data => setReport(data.report)); };
 
   const handleSelectAsset = (asset: Asset) => {
@@ -54,13 +72,71 @@ function App() {
     }).catch(err => { setErrorMsg(err.message); }).finally(() => setLoading(false));
   };
 
+  // 充值处理
+  const handleDeposit = () => {
+    fetch('http://127.0.0.1:8000/api/pool/deposit', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ amount: depositAmount })
+    }).then(() => {
+      alert(`🎉 充值成功！资金池增加了 ¥${depositAmount}`);
+      setShowDeposit(false);
+      setDepositAmount("");
+      fetchPool();
+    });
+  };
+
+  // 修改基准处理
+  const handleUpdateConfig = () => {
+    fetch('http://127.0.0.1:8000/api/pool/config', {
+      method: 'POST', 
+      headers: {'Content-Type': 'application/json'},
+      // 🔥 修改：同时发送 base_investment 和 pool_balance
+      body: JSON.stringify({ 
+        base_investment: newBase, 
+        pool_balance: newBalance 
+      })
+    }).then(() => {
+      alert("✅ 配置与资金校准已保存");
+      setShowConfig(false);
+      fetchPool();
+    });
+  };
+
   const handleRunAll = () => {
-    if(!confirm("确定执行全组合策略？")) return;
+    // 1. 先检查有没有钱，没钱提示一下（但也允许继续跑，看策略建议）
+    if (poolState.pool_balance < 100) {
+      if(!confirm("⚠️ 资金池余额不足 (¥" + poolState.pool_balance + ")，可能无法生成买入建议。\n是否继续？")) return;
+    }
+
     setLoading(true);
-    fetch('http://127.0.0.1:8000/api/plan/run', { method: 'POST' }).then(res=>res.json()).then(data => {
-        alert(data.logs.join("\n")); fetchGlobalState(); 
-        if(selectedAsset) handleSelectAsset(selectedAsset);
+    fetch('http://127.0.0.1:8000/api/plan/run', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        // data.suggestions 是后端返回的列表
+        setSuggestions(data.suggestions || []); 
+        setShowSuggestions(true); // 打开弹窗
+        fetchPool(); // 刷新余额显示
         setLoading(false);
+      })
+      .catch(err => {
+        alert("执行失败，请检查后端日志");
+        setLoading(false);
+      });
+  };
+
+  // 获取交易历史
+  const fetchTransactions = (code: string) => {
+    fetch(`http://127.0.0.1:8000/api/transactions/${code}`).then(res => res.json()).then(setTransactions);
+  };
+
+  // 删除交易
+  const handleDeleteTransaction = (txId: number) => {
+    if (!confirm("确定删除这条交易记录？")) return;
+    fetch(`http://127.0.0.1:8000/api/transactions/${txId}`, { method: 'DELETE' }).then(() => {
+      if (selectedAsset) {
+        fetchTransactions(selectedAsset.code);
+        handleSelectAsset(selectedAsset); // 刷新持仓数据
+      }
     });
   };
 
@@ -84,8 +160,22 @@ function App() {
     
     fetch('http://127.0.0.1:8000/api/transactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ asset_code: selectedAsset.code, type: transType, price: price, amount: finalAmount, fee: inputMode==='shares'?0:0 })
-    }).then(res => res.json()).then(data => { if(data.id) { setShowTransForm(false); handleSelectAsset(selectedAsset); fetchGlobalState(); } });
+      body: JSON.stringify({ 
+        asset_code: selectedAsset.code, 
+        type: transType, 
+        price: price, 
+        amount: finalAmount, 
+        fee: inputMode==='shares'?0:0,
+        from_pool: fromPool
+      })
+    }).then(res => res.json()).then(data => { 
+      if(data.id) { 
+        setShowTransForm(false); 
+        handleSelectAsset(selectedAsset); 
+        fetchPool(); // 刷新资金池
+        if (showHistory) fetchTransactions(selectedAsset.code);
+      } 
+    });
   };
 
   const { profit, rate, marketValue } = (() => {
@@ -100,6 +190,63 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* === 📋 本周建议清单弹窗 === */}
+      {showSuggestions && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{
+            background: '#18181b', border: '1px solid #333', borderRadius: '16px',
+            width: '500px', maxWidth: '90%', padding: '24px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
+              <h3 style={{margin:0, display:'flex', alignItems:'center', gap:8}}>
+                <FileText size={20} color="var(--primary)"/> 本周建议清单
+              </h3>
+              <button onClick={() => setShowSuggestions(false)} style={{background:'none', border:'none', color:'#666', cursor:'pointer'}}>✕</button>
+            </div>
+
+            <div style={{maxHeight:'60vh', overflowY:'auto', marginBottom:20}}>
+              {suggestions.length === 0 ? (
+                <div style={{textAlign:'center', color:'#666', padding:20}}>暂无建议</div>
+              ) : (
+                suggestions.map((item: any, index: number) => (
+                  <div key={index} style={{
+                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                    padding:'12px', marginBottom:'8px', borderRadius:'8px',
+                    background: item.amt > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.03)',
+                    border: item.amt > 0 ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid transparent'
+                  }}>
+                    <div>
+                      <div style={{fontWeight:600, color:'#eee'}}>{item.name}</div>
+                      <div style={{fontSize:12, color: item.amt > 0 ? '#34d399' : '#888'}}>{item.msg}</div>
+                    </div>
+                    {item.amt > 0 && (
+                      <div style={{fontSize:18, fontWeight:'bold', color:'var(--success)'}}>
+                        ¥ {item.amt}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{fontSize:12, color:'#666', lineHeight:1.5, background:'rgba(0,0,0,0.2)', padding:10, borderRadius:8}}>
+              💡 提示：<br/>
+              1. 系统不会自动扣款。请根据上述清单，去支付宝/券商手动买入。<br/>
+              2. 买完后，请回到列表点击对应资产的 <b>"📝 记一笔"</b> 按钮进行记账。<br/>
+              3. 记账时勾选"从资金池扣款"，系统余额才会减少。
+            </div>
+
+            <button onClick={() => setShowSuggestions(false)} className="btn btn-primary" style={{width:'100%', marginTop:20, padding:12}}>
+              知道了，这就去操作
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 侧边栏 */}
       <div className="sidebar">
         <div className="brand">
@@ -107,19 +254,83 @@ function App() {
           RevvInvest
         </div>
 
-        {/* 全局仪表盘 (重做) */}
-        <div className="global-dashboard">
-          <div>
-            <div className="global-label">本周预算</div>
-            <div className="global-value">¥ {Number(globalState.budget_left).toFixed(0)}</div>
-          </div>
-          <div>
-            <div className="global-label">全局准备金</div>
-            <div className="global-sub">¥ {Number(globalState.global_reserve).toFixed(0)}</div>
-          </div>
-          <button onClick={handleRunAll} className="btn btn-primary" style={{justifyContent:'center', marginTop:10}}>
-            <Zap size={14} /> 一键发车
+        {/* === 💰 资金池管理卡片 === */}
+        <div className="global-dashboard" style={{position: 'relative'}}>
+          {/* 设置按钮 (右上角) */}
+          <button 
+            className="btn-icon" 
+            style={{position: 'absolute', top: 10, right: 10}}
+            onClick={() => setShowConfig(!showConfig)}
+            title="设置定投基准"
+          >
+            <Settings size={14} />
           </button>
+
+          <div>
+            <div className="global-label">Investable Pool</div>
+            <div className="global-value" style={{color: poolState.pool_balance < 100 ? '#ef4444' : '#fff'}}>
+              ¥ {Number(poolState.pool_balance).toFixed(0)}
+            </div>
+          </div>
+          
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:5}}>
+             <div className="global-sub">基准: ¥{poolState.base_investment}/次</div>
+          </div>
+
+          <div style={{display: 'flex', gap: 8, marginTop: 15}}>
+            <button onClick={() => setShowDeposit(!showDeposit)} className="btn btn-secondary" style={{flex:1, justifyContent:'center'}}>
+               + 充值
+            </button>
+            <button onClick={handleRunAll} className="btn btn-primary" style={{flex:1, justifyContent:'center'}}>
+               🚀 发车
+            </button>
+          </div>
+
+          {/* 充值折叠面板 */}
+          {showDeposit && (
+            <div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}>
+               <input 
+                 className="input-dark" 
+                 placeholder="金额 (¥)" 
+                 value={depositAmount}
+                 onChange={e => setDepositAmount(e.target.value)}
+                 style={{marginBottom: 5}}
+               />
+               <button onClick={handleDeposit} className="btn btn-primary" style={{width: '100%', fontSize: 12, padding: 6}}>确认充值</button>
+            </div>
+          )}
+
+          {/* 配置折叠面板 */}
+          {showConfig && (
+            <div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}>
+               
+               {/* 修改资金池余额 */}
+               <div style={{marginBottom: 10}}>
+                 <div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>校准资金池余额 (¥):</div>
+                 <input 
+                   className="input-dark" 
+                   value={newBalance}
+                   onChange={e => setNewBalance(e.target.value)}
+                   type="number"
+                 />
+               </div>
+
+               {/* 修改定投基准 */}
+               <div style={{marginBottom: 10}}>
+                 <div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>每份定投基准 (¥):</div>
+                 <input 
+                   className="input-dark" 
+                   value={newBase}
+                   onChange={e => setNewBase(e.target.value)}
+                   type="number"
+                 />
+               </div>
+
+               <button onClick={handleUpdateConfig} className="btn btn-secondary" style={{width: '100%', fontSize: 12, padding: 6}}>
+                 💾 保存修改
+               </button>
+            </div>
+          )}
         </div>
 
         <div className="section-header">
@@ -278,12 +489,18 @@ function App() {
                     <div onClick={()=>setInputMode("amount")} style={{cursor:'pointer', color:inputMode==='amount'?'var(--primary)':'var(--text-dim)', fontWeight:inputMode==='amount'?600:400}}>金额模式</div>
                     <div onClick={()=>setInputMode("shares")} style={{cursor:'pointer', color:inputMode==='shares'?'var(--primary)':'var(--text-dim)', fontWeight:inputMode==='shares'?600:400}}>份额模式</div>
                   </div>
-                  <div style={{display:'flex', gap:10}}>
+                  <div style={{display:'flex', gap:10, marginBottom:10}}>
                     <select className="input-dark" value={transType} onChange={e=>setTransType(e.target.value)} style={{width:100}}><option value="BUY">买入</option><option value="SELL">卖出</option></select>
                     <input className="input-dark" type="number" placeholder="价格" value={transPrice} onChange={e=>setTransPrice(e.target.value)} />
                     <input className="input-dark" type="number" placeholder={inputMode==='amount'?"金额 (¥)":"份额"} value={inputMode==='amount'?transAmount:transShares} onChange={e=>inputMode==='amount'?setTransAmount(e.target.value):setTransShares(e.target.value)} />
                     <button className="btn btn-primary" onClick={handleTransaction}>保存</button>
                   </div>
+                  {transType === "BUY" && (
+                    <label style={{display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--text-muted)', cursor:'pointer'}}>
+                      <input type="checkbox" checked={fromPool} onChange={e=>setFromPool(e.target.checked)} style={{cursor:'pointer'}} />
+                      <span>从资金池扣款</span>
+                    </label>
+                  )}
                 </div>
               )}
 
@@ -293,6 +510,52 @@ function App() {
                 <div className="data-box"><div className="data-label"><TrendingUp size={12}/> 盈亏</div><div className="data-value" style={{color: profit>=0?'var(--danger)':'var(--success)'}}>{profit>0?'+':''}{fmtMoney(profit)}</div></div>
                 <div className="data-box"><div className="data-label"><Percent size={12}/> 收益率</div><div className="data-value" style={{color: profit>=0?'var(--danger)':'var(--success)'}}>{rate.toFixed(2)}%</div></div>
               </div>
+
+              {/* 历史记录按钮 */}
+              <div style={{marginTop: 15, paddingTop: 15, borderTop: '1px solid var(--border-subtle)'}}>
+                <button className="btn btn-outline" onClick={() => {
+                  setShowHistory(!showHistory);
+                  if (!showHistory && selectedAsset) fetchTransactions(selectedAsset.code);
+                }} style={{width: '100%', justifyContent: 'center'}}>
+                  📜 {showHistory ? '隐藏' : '显示'}历史记录
+                </button>
+              </div>
+
+              {/* 历史记录列表 */}
+              {showHistory && transactions.length > 0 && (
+                <div style={{marginTop: 15, maxHeight: 300, overflowY: 'auto'}}>
+                  <div style={{fontSize: 12, color: 'var(--text-dim)', marginBottom: 8}}>交易历史</div>
+                  {transactions.map((tx: any) => (
+                    <div key={tx.id} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px', background: 'var(--bg-panel)', borderRadius: 8, marginBottom: 8,
+                      border: '1px solid var(--border-subtle)'
+                    }}>
+                      <div style={{flex: 1}}>
+                        <div style={{fontSize: 13, fontWeight: 600}}>
+                          {tx.type === 'BUY' ? '买入' : '卖出'} - {new Date(tx.date).toLocaleDateString()}
+                        </div>
+                        <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 4}}>
+                          价格: ¥{tx.price.toFixed(4)} | 金额: ¥{tx.amount.toFixed(2)} | 份额: {tx.units.toFixed(2)}
+                        </div>
+                      </div>
+                      <button 
+                        className="btn-icon" 
+                        onClick={() => handleDeleteTransaction(tx.id)}
+                        style={{color: 'var(--danger)'}}
+                        title="删除"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {showHistory && transactions.length === 0 && (
+                <div style={{marginTop: 15, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12}}>
+                  暂无交易记录
+                </div>
+              )}
             </div>
 
             {/* 5. 图表 */}
