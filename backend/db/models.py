@@ -81,3 +81,35 @@ class PlanState(SQLModel, table=True):
     auto_deposit_amount: float = 0.0  # 自动充值金额
 
     updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# === ⬇️ 新增：穿透式风控专用表 ⬇️ ===
+
+
+class Stock(SQLModel, table=True):
+    """单只股票信息（含行业）"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    code: str = Field(index=True, unique=True)  # 如 600519
+    name: str
+    industry: str = "未分类"  # 申万一级行业
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class FundHolding(SQLModel, table=True):
+    """基金持仓明细"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    fund_code: str = Field(index=True)  # 对应 Asset.code
+    stock_code: str = Field(index=True)  # 对应 Stock.code
+    stock_name: str
+    weight: float  # 持仓占比，0.0~1.0
+    report_date: str  # 报告期，如 '2024-09-30'
+
+
+class IndustryLimit(SQLModel, table=True):
+    """行业级刹车上限配置"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    industry: str = Field(index=True, unique=True)  # 行业名称
+    max_weight: float = 0.4  # 0.0~1.0，默认40%

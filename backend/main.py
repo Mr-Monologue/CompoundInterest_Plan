@@ -17,7 +17,7 @@ from datetime import datetime
 
 # 引入各个模块
 from db.database import create_db_and_tables, get_session
-from db.models import Asset, Transaction
+from db.models import Asset, Transaction, FundHolding
 from services.market import get_strategy_advice
 from services.strategy import (
     run_strategy_analysis,
@@ -29,6 +29,8 @@ from services.portfolio import (
     get_global_state,
     adjust_pool_balance,
 )
+from services.holdings import sync_fund_holdings, get_fund_industry_vector
+from collections import defaultdict
 
 
 # === 生命周期：启动时建表 ===
@@ -123,7 +125,23 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)):
 @app.get("/api/advice/{code}")
 def get_advice(code: str, session: Session = Depends(get_session)):
     # 1. 调策略模块的新接口，获取带建议的数据
-    return get_instant_analysis(code, session)
+    data = get_instant_analysis(code, session)
+
+    # 2. 🔥 新增：查询该基金的前十大重仓股 🔥
+    holdings = session.exec(
+        select(FundHolding)
+        .where(FundHolding.fund_code == code)
+        .order_by(FundHolding.weight.desc())
+        .limit(10)
+    ).all()
+
+    # 拼装到返回结果里
+    data["top_holdings"] = [
+        {"name": h.stock_name, "code": h.stock_code, "weight": h.weight}
+        for h in holdings
+    ]
+
+    return data
 
 
 # 4. 交易记录
@@ -344,6 +362,74 @@ def run_all_strategies(session: Session = Depends(get_session)):
 
         traceback.print_exc()
         return {"error": str(e)}
+
+
+# === API: 强制同步某基金的持仓 ===
+@app.post("/api/holdings/sync/{code}")
+def sync_holdings(code: str, session: Session = Depends(get_session)):
+    try:
+        sync_fund_holdings(session, code)
+        return {"ok": True}
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return {"error": str(e)}
+
+
+# === API: 获取全组合的穿透式行业分布 ===
+@app.get("/api/analysis/industry")
+def get_industry_analysis(session: Session = Depends(get_session)):
+    assets = session.exec(select(Asset)).all()
+
+    # 1. 统计各行业总市值
+    industry_market_value = defaultdict(float)
+    total_portfolio_value = 0.0
+
+    for asset in assets:
+        # 获取当前持仓市值
+        txs = session.exec(
+            select(Transaction).where(Transaction.asset_code == asset.code)
+        ).all()
+        units = sum(t.units for t in txs if t.type == "BUY") - sum(
+            t.units for t in txs if t.type == "SELL"
+        )
+
+        if units <= 0:
+            continue
+
+        # 获取现价
+        mdata = get_strategy_advice(asset.code, asset.name)
+        if mdata.get("action") == "ERROR":
+            continue
+
+        current_mv = units * mdata["current_price"]
+        total_portfolio_value += current_mv
+
+        # 获取该基金的行业向量
+        ind_vector = get_fund_industry_vector(session, asset.code)
+
+        if ind_vector:
+            for ind, weight in ind_vector.items():
+                industry_market_value[ind] += current_mv * weight
+        else:
+            # 如果没穿透数据（比如新基金没抓取），暂时归为"其他"
+            industry_market_value["未穿透/其他"] += current_mv
+
+    if total_portfolio_value == 0:
+        return []
+
+    # 2. 格式化输出 (按占比降序)
+    result = []
+    for ind, mv in industry_market_value.items():
+        ratio = mv / total_portfolio_value
+        result.append(
+            {"name": ind, "value": round(mv, 2), "ratio": round(ratio * 100, 2)}
+        )
+
+    # 按占比排序
+    result.sort(key=lambda x: x["ratio"], reverse=True)
+    return result
 
 
 if __name__ == "__main__":
