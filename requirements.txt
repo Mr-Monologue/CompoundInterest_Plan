@@ -1,14 +1,9 @@
-# 核心依赖 - Python 3.13 兼容版本
-streamlit>=1.37.0
-pandas>=2.2.0
-numpy>=2.0.0
-plotly>=6.3.0
-
-# 数据源依赖
-yfinance>=0.2.43
+fastapi>=0.104.0
+uvicorn>=0.24.0
+sqlmodel>=0.0.14
+pandas>=2.0.0
+numpy>=1.24.0
 akshare>=1.13.0
-requests-cache>=1.2.0
-
-# 工具依赖
-python-dotenv>=1.1.0
-matplotlib>=3.10.0
+yfinance>=0.2.30
+requests>=2.31.0
+apscheduler>=3.10.0

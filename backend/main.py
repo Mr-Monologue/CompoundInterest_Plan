@@ -1,6 +1,6 @@
 import os
+import logging
 
-# 强制禁用代理，确保 Python 能走 VPN 或直连
 os.environ["http_proxy"] = ""
 os.environ["https_proxy"] = ""
 os.environ["HTTP_PROXY"] = ""
@@ -9,15 +9,12 @@ os.environ["NO_PROXY"] = "*"
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 import uvicorn
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from datetime import datetime
 
-# 引入各个模块
 from db.database import create_db_and_tables, get_session
 from db.models import Asset, Transaction, FundHolding
 from services.market import get_strategy_advice
@@ -32,20 +29,36 @@ from services.portfolio import (
     adjust_pool_balance,
 )
 from services.holdings import sync_fund_holdings, get_fund_industry_vector
+from scheduler import SmartInvestScheduler
 from collections import defaultdict
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("smartinvest")
 
-# === 生命周期：启动时建表 ===
+scheduler = SmartInvestScheduler()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
-    print("✅ 数据库初始化完成！")
+    logger.info("数据库初始化完成")
+    scheduler.start()
+    logger.info("调度器已启动")
     yield
+    scheduler.shutdown()
+    logger.info("调度器已停止")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="SmartInvest API",
+    description="智能定投系统 — 纯后端服务，适配 RK3588 / clawbot 部署",
+    version="2.0.0",
+    lifespan=lifespan,
+)
 
-# === 跨域配置 ===
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -429,37 +442,82 @@ def get_industry_analysis(session: Session = Depends(get_session)):
 
 
 # =======================
-#    前端静态文件托管
+#    运维与调度 API
 # =======================
 
-# 1. 获取绝对路径
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DIST_DIR = os.path.join(BASE_DIR, "dist")
-ASSETS_DIR = os.path.join(DIST_DIR, "assets")
 
-# 2. 挂载静态资源 (CSS/JS/Images)
-# 这些文件通常在 /assets 路径下
-if os.path.exists(ASSETS_DIR):
-    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+@app.get("/api/health")
+def health_check():
+    """健康检查端点，用于 clawbot / 监控系统探活"""
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "scheduler_running": scheduler.is_running(),
+    }
 
 
-# 3. 🔥 核心修复：处理根路径 "/" 和所有其他前端路由 🔥
-# 注意：这个函数必须放在所有 @app.get("/api/...") 之后！
-@app.get("/{full_path:path}")
-async def serve_frontend(full_path: str):
-    # 如果是 API 请求但没匹配到上面的接口，返回 404
-    if full_path.startswith("api/"):
-        return {"error": "API endpoint not found"}
+@app.get("/api/system/status")
+def system_status(session: Session = Depends(get_session)):
+    """系统状态总览"""
+    assets = session.exec(select(Asset)).all()
+    state = get_global_state(session)
+    jobs = scheduler.list_jobs()
+    return {
+        "assets_count": len(assets),
+        "pool_balance": state.pool_balance,
+        "base_investment": state.base_investment,
+        "deposit_frequency": state.deposit_frequency,
+        "scheduler": {
+            "running": scheduler.is_running(),
+            "jobs": jobs,
+        },
+        "timestamp": datetime.now().isoformat(),
+    }
 
-    # 否则，一律返回 index.html (让 React 路由去处理页面跳转)
-    index_file = os.path.join(DIST_DIR, "index.html")
-    if os.path.exists(index_file):
-        return FileResponse(index_file)
-    else:
-        return {
-            "error": "前端文件未找到",
-            "tip": "请确保你已经执行了 'npm run build' 并将 'dist' 文件夹放到了 'backend' 目录下。",
-        }
+
+@app.get("/api/scheduler/jobs")
+def get_scheduler_jobs():
+    """查看所有定时任务"""
+    return {"jobs": scheduler.list_jobs()}
+
+
+@app.post("/api/scheduler/trigger/{job_id}")
+def trigger_job(job_id: str):
+    """手动触发指定任务"""
+    ok = scheduler.trigger_job(job_id)
+    if ok:
+        return {"ok": True, "message": f"任务 {job_id} 已触发"}
+    return {"ok": False, "message": f"任务 {job_id} 不存在"}
+
+
+@app.post("/api/scheduler/pause/{job_id}")
+def pause_job(job_id: str):
+    """暂停指定任务"""
+    ok = scheduler.pause_job(job_id)
+    return {"ok": ok}
+
+
+@app.post("/api/scheduler/resume/{job_id}")
+def resume_job(job_id: str):
+    """恢复指定任务"""
+    ok = scheduler.resume_job(job_id)
+    return {"ok": ok}
+
+
+# =======================
+#    根路径
+# =======================
+
+
+@app.get("/")
+def root():
+    return {
+        "service": "SmartInvest",
+        "version": "2.0.0",
+        "docs": "/docs",
+        "health": "/api/health",
+    }
 
 
 if __name__ == "__main__":
