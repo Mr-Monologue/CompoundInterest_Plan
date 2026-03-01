@@ -1,295 +1,319 @@
-# 智能定投系统
+# SmartInvest - 智能定投系统
 
-一个基于Streamlit的投资仪表盘应用，采用标准Python项目布局和模块化设计，提供动态定投建议、持仓分析和估值监控功能。
+一个基于网格策略的智能定投系统，支持基金、ETF 等资产的自动化投资建议和交易记录管理。
 
-## 🏗️ 项目结构
+## 📋 项目简介
+
+SmartInvest 是一个全栈投资管理系统，通过分析市场数据（价格、MA200、波动率等），基于网格策略自动生成投资建议。系统支持多资产管理、交易记录、策略回测和组合调度等功能。
+
+### 核心特性
+
+- 🎯 **智能策略引擎**：基于 Z-Score 和网格位置的动态定投策略
+- 📊 **实时行情获取**：支持场外基金、ETF、股票等多数据源
+- 💰 **全局资金管理**：周预算 + 全局准备金池的智能分配
+- 📈 **可视化看板**：实时展示价格走势、MA200、投资建议等
+- 📝 **交易记录管理**：完整的买卖记录和持仓统计
+- 🔄 **组合调度**：一键执行全组合策略，按低估程度自动分配资金
+- 📑 **策略复盘**：生成周报和历史分析报告
+
+## 🛠️ 技术栈
+
+### 后端
+- **FastAPI** - 现代 Python Web 框架
+- **SQLModel** - 基于 SQLAlchemy 和 Pydantic 的 ORM
+- **SQLite** - 轻量级数据库
+- **AKShare / yfinance** - 金融数据获取
+- **Pandas / NumPy** - 数据处理和计算
+
+### 前端
+- **React 19** - UI 框架
+- **TypeScript** - 类型安全
+- **Vite** - 构建工具
+- **Recharts** - 数据可视化
+- **Lucide React** - 图标库
+
+## 📁 项目结构
 
 ```
-CompoundInterestPlan/
-├─ requirements.txt              # 依赖管理
-├─ README.md
-├─ run_gui.py                   # 主启动脚本
-├─ data/
-│  ├─ config.json               # 多基金配置
-│  └─ trend.db                  # SQLite 数据库
-└─ src/
-   └─ app/
-      ├─ ui/
-      │  └─ gui.py              # Streamlit GUI 入口
-      ├─ services/
-      │  └─ actions.py          # GUI 调用的一次性动作（采样并保存）
-      ├─ core/
-      │  ├─ config.py           # 读取/合并 config.json
-      │  ├─ data_sources.py     # 抓净值/指数（带回退）
-      │  ├─ signals.py          # 偏离度 & 定投建议（平滑）
-      │  └─ holdings.py         # 持仓精算（Decimal）
-      └─ db/
-         └─ storage.py          # SQLite v2 表封装（全带 fund_code）
+SmartInvest/
+├── backend/                 # 后端服务
+│   ├── db/                 # 数据库相关
+│   │   ├── database.py     # 数据库连接和初始化
+│   │   ├── models.py       # 数据模型定义
+│   │   └── state.py        # 全局状态管理
+│   ├── services/           # 业务逻辑层
+│   │   ├── market.py       # 市场数据获取（多数据源）
+│   │   ├── strategy.py     # 策略计算引擎
+│   │   └── portfolio.py   # 组合调度逻辑
+│   ├── main.py            # FastAPI 应用入口
+│   └── invest.db          # SQLite 数据库文件
+│
+└── frontend/              # 前端应用
+    ├── src/
+    │   ├── App.tsx        # 主应用组件
+    │   ├── App.css        # 样式文件
+    │   └── main.tsx       # 入口文件
+    ├── package.json       # 依赖配置
+    └── vite.config.ts     # Vite 配置
 ```
-
-### 模块化架构
-
-1. **core/config.py** - 配置管理
-   - 默认参数定义
-   - 用户自定义JSON读取
-   - 配置验证
-
-2. **core/data_sources.py** - 数据源管理
-   - AKShare/yfinance/天天基金数据抓取
-   - @st.cache_data 缓存机制
-   - 网络失败回退策略
-
-3. **core/signals.py** - 信号计算
-   - MA200 偏离计算
-   - 阈值/平滑映射
-   - 动态定投比例计算
-
-4. **core/holdings.py** - 持仓计算
-   - Decimal 精度运算
-   - 持有/累计盈亏计算
-   - 盈亏平衡净值计算
-
-5. **db/storage.py** - 数据存储
-   - SQLite v2 表封装
-   - 全带 fund_code 支持多基金
-   - 数据迁移和版本管理
-
-6. **services/actions.py** - 服务层
-   - 每日任务执行
-   - GUI 按钮触发的操作
-   - 数据采样并保存
-
-### 页面结构
-
-- **📊 总览**: 多基金状态总览
-- **🔍 基金详情**: 单个基金的详细分析
-- **📈 持仓**: 持仓管理和盈亏分析
-- **📅 周复盘**: 最近一周的定投记录
 
 ## 🚀 快速开始
 
-### 1. 环境准备
+### 环境要求
 
-#### 创建虚拟环境（推荐）
+- Python 3.8+
+- Node.js 16+
+- npm 或 yarn
+
+### 后端安装与运行
+
+1. **进入后端目录**
 ```bash
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1  # Windows PowerShell
-# 或
-source .venv/bin/activate     # Linux/Mac
+cd backend
 ```
 
-#### 安装依赖
+2. **创建虚拟环境（推荐）**
 ```bash
-pip install -r requirements.txt
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux/Mac
+source venv/bin/activate
 ```
 
-### 2. 配置基金信息
-
-编辑 `data/config.json` 文件，设置您的基金配置：
-
-```json
-{
-  "defaults": {
-    "weekly_budget": 200.0,
-    "fixed_ratio": 0.40,
-    "reserve_cap_months": 3,
-    "max_weekly_multiple": 3.0,
-    "ma200_low": -10.0,
-    "ma200_mid": 5.0,
-    "alloc_low": 0.75,
-    "alloc_mid": 0.25,
-    "alloc_high": 0.0
-  },
-  "funds": [
-    {
-      "fund_code": "000083",
-      "fund_name": "汇添富消费行业混合",
-      "fund_name_en": "000083.SZ",
-      "proxy_index": "000932",
-      "proxy_index_en": "000932.SS",
-      "weekly_budget": 200.0,
-      "manual_holdings": {
-        "enabled": true,
-        "units_left": 6.63,
-        "avg_cost": 6.8627,
-        "realized_pnl": -7.24
-      }
-    }
-  ]
-}
-```
-
-### 3. 启动应用
-
-#### 方式一：使用主启动脚本（推荐）
+3. **安装依赖**
 ```bash
-python run_gui.py
+pip install fastapi uvicorn sqlmodel pandas numpy akshare yfinance requests
 ```
 
-#### 方式二：直接运行 Streamlit
+4. **运行后端服务**
 ```bash
-streamlit run src/app/ui/gui.py
+python main.py
 ```
 
-应用将在浏览器中自动打开，默认地址：http://localhost:8501
+后端服务将在 `http://127.0.0.1:8000` 启动
 
-### 4. 基金管理
+### 前端安装与运行
 
-系统支持多基金配置管理，您可以通过 GUI 进行以下操作：
+1. **进入前端目录**
+```bash
+cd frontend
+```
 
-#### 添加新基金
-1. 在侧边栏点击 "➕ 添加基金" 展开表单
-2. 填写基金信息：
-   - 基金代码（如：000083）
-   - 基金名称（如：汇添富消费行业混合）
-   - yfinance代码（如：000083.SZ）
-   - 代理指数（如：000932）
-   - 代理指数_en（如：000932.SS）
-   - 每周预算金额
-3. 点击 "保存到配置" 按钮
+2. **安装依赖**
+```bash
+npm install
+```
 
-#### 数据采样
-1. 在侧边栏选择要操作的基金
-2. 点击 "📥 采样并保存（估值+建议）" 按钮
-3. 系统将自动获取最新数据并计算定投建议
+3. **启动开发服务器**
+```bash
+npm run dev
+```
 
-#### 持仓管理
-1. 切换到 "📈 持仓" 标签页
-2. 在 "手动持仓" 表单中更新持仓信息
-3. 点击 "保存" 更新配置
+前端应用将在 `http://localhost:5173` 启动（Vite 默认端口）
 
-## 📊 功能特性
+## 📡 API 文档
 
-### 动态定投策略
-- 基于MA200偏离度的智能定投
-- 平滑映射避免阈值跳跃
-- 准备金管理机制
-- 多基金独立管理
+### 资产管理
 
-### 数据源管理
-- 多数据源支持（AKShare、yfinance）
-- 智能回退策略
-- 缓存机制提升性能
-- 实时数据更新
+- `GET /api/assets` - 获取所有资产列表
+- `POST /api/assets` - 添加新资产
+  ```json
+  {
+    "code": "005827",
+    "name": "易方达蓝筹精选"
+  }
+  ```
+- `DELETE /api/assets/{asset_id}` - 删除资产
 
-### 持仓分析
-- Decimal精度计算
-- 实时盈亏分析
-- ROI指标计算
-- 持仓快照记录
+### 行情与建议
 
-### 交互式界面
-- Streamlit现代化界面
-- 多标签页组织
-- 实时数据刷新
-- 响应式设计
+- `GET /api/advice/{code}` - 获取实时投资建议
+  - 返回：当前价格、MA200、网格位置、建议金额、操作建议等
 
-## ⚙️ 配置说明
+### 交易记录
 
-### 主要参数
+- `POST /api/transactions` - 记录交易
+  ```json
+  {
+    "asset_code": "005827",
+    "type": "BUY",
+    "price": 1.9775,
+    "amount": 200.0,
+    "date": "2025-11-28"
+  }
+  ```
+- `GET /api/portfolio/{code}` - 获取持仓统计
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `weekly_budget` | 周定投预算 | 200.0 |
-| `fixed_ratio` | 固定定投比例 | 0.40 |
-| `reserve_cap_months` | 准备金上限月数 | 3 |
-| `max_weekly_multiple` | 最大周倍数 | 3.0 |
-| `ma200_low` | 低估阈值 | -10.0% |
-| `ma200_mid` | 中估阈值 | 5.0% |
-| `alloc_low` | 低估时分配比例 | 0.75 |
-| `alloc_mid` | 中估时分配比例 | 0.25 |
-| `alloc_high` | 高估时分配比例 | 0.0 |
+### 策略执行
 
-### 数据库表结构
+- `POST /api/strategy/run/{code}` - 执行单个标的策略分析
+- `GET /api/strategy/report/{code}?days=7` - 获取策略复盘报告
 
-- **nav_daily_v2**: 基金净值历史
-- **proxy_daily_v2**: 代理指数数据
-- **dca_plan_v2**: 定投计划记录
-- **holdings_snapshot_v2**: 持仓快照
-- **fund_state**: 基金状态管理
+### 全局计划
+
+- `GET /api/plan/state` - 获取全局状态（周预算、准备金等）
+- `POST /api/plan/run` - 一键执行全组合策略
+
+## 💡 使用说明
+
+### 1. 添加资产
+
+在侧边栏点击"添加标的"按钮，输入基金代码（如 `005827`）和名称，系统会自动获取行情数据。
+
+### 2. 查看投资建议
+
+点击侧边栏中的资产，系统会：
+- 获取实时价格和 MA200
+- 计算网格位置（Z-Score）
+- 生成投资建议（买入/等待/卖出）
+- 显示历史价格走势图
+
+### 3. 记录交易
+
+在资产详情页点击"记账"按钮，输入交易信息（价格、金额、类型），系统会自动计算份额并记录。
+
+### 4. 执行策略
+
+- **单标策略**：在资产详情页点击"执行策略"，系统会计算今日建议并保存到数据库
+- **全组合策略**：点击"执行全组合"，系统会：
+  1. 遍历所有资产，计算网格位置
+  2. 按低估程度排序
+  3. 自动分配周预算和准备金
+  4. 生成交易记录
+
+### 5. 查看复盘报告
+
+在资产详情页的"策略复盘"卡片中，可以查看最近 N 天的策略执行历史。
+
+## 🧠 策略说明
+
+### 网格策略算法
+
+系统使用基于 Z-Score 的网格策略：
+
+1. **网格位置计算**
+   - 网格宽度 = 波动率 × 0.6（最小 0.5%）
+   - 网格位置 = (当前价格 - MA200) / MA200 / 网格宽度
+
+2. **估值区间**
+   - **低估区** (Grid < -1.0)：几何加码，动用准备金
+   - **合理区** (-1.0 ≤ Grid ≤ 2.0)：正常定投
+   - **高估区** (Grid > 2.0)：停止买入，存入准备金
+
+3. **资金分配**
+   - 基础金额：200 元/周
+   - 动态加码：根据网格位置几何递增（最大 5 倍）
+   - 准备金机制：高估时存入，低估时取出
+
+### 数据源优先级
+
+**场外基金**（如 005827）：
+1. 东方财富 `pingzhongdata` JS 接口（直连 → VPN）
+2. 东方财富 `lsjz` 接口（直连 → VPN）
+3. 腾讯财经接口（备用）
+
+**ETF/股票**（如 sh000300）：
+1. 东方财富 ETF 接口
+2. Yahoo Finance（备用）
+
+## 🗄️ 数据库模型
+
+### Asset（资产表）
+- `id`: 主键
+- `code`: 资产代码（唯一）
+- `name`: 资产名称
+- `type`: 资产类型
+
+### Transaction（交易表）
+- `id`: 主键
+- `asset_code`: 资产代码
+- `date`: 交易日期
+- `type`: 交易类型（BUY/SELL）
+- `price`: 成交价
+- `amount`: 成交金额
+- `units`: 成交份额
+
+### FundState（基金状态表）
+- `id`: 主键
+- `asset_code`: 资产代码（唯一）
+- `cumulative_reserve_usage`: 累计准备金使用量
+- `last_signal_date`: 最后信号日期
+
+### DailyPlan（每日计划表）
+- `id`: 主键
+- `asset_code`: 资产代码
+- `date`: 日期
+- `close`: 收盘价
+- `ma200`: MA200 值
+- `dev_pct`: 偏离度
+- `level`: 估值等级
+- `base_amt`: 基础金额
+- `dyn_amt`: 动态金额
+- `total_amt`: 总金额
+- `reserve_before/after`: 准备金快照
+
+### PlanState（全局计划表）
+- `id`: 固定为 1
+- `weekly_budget`: 周预算（默认 200）
+- `global_reserve`: 全局准备金
+- `current_week_start`: 本周起始日
+- `budget_used_this_week`: 本周已用预算
 
 ## 🔧 开发说明
 
-### 环境要求
-- Python 3.8+
-- Streamlit 1.49+
-- 建议使用虚拟环境
+### 代码规范
 
-### 核心依赖
-- `streamlit` - Web界面框架
-- `pandas` - 数据处理
-- `numpy` - 数值计算
-- `akshare` - 中国金融数据
-- `yfinance` - 全球金融数据
-- `requests-cache` - 请求缓存
-- `plotly` - 交互式图表
-
-### 模块测试
-
-每个模块都可以独立测试：
-
-```bash
-python -c "from src.app.core.config import load_all_funds_config; print(load_all_funds_config())"
-python -c "from src.app.core.data_sources import get_latest_nav_with_fallback; print('Data sources OK')"
-```
+- 后端：遵循 PEP 8，使用类型提示
+- 前端：使用 TypeScript，遵循 React Hooks 最佳实践
+- 数据库操作：使用 SQLModel，通过 Session 管理
 
 ### 添加新功能
 
-1. 在相应模块中添加函数
-2. 在 `src/app/ui/gui.py` 中集成到页面
-3. 更新配置和文档
+1. **添加新的数据源**：在 `backend/services/market.py` 中添加新的 `fetch_*` 函数
+2. **修改策略逻辑**：编辑 `backend/services/strategy.py` 中的 `calculate_grid_logic`
+3. **添加新的 API**：在 `backend/main.py` 中添加路由
+4. **前端组件**：在 `frontend/src/App.tsx` 中添加新的 UI 组件
 
-## 📈 使用建议
+### 调试技巧
 
-### 定投策略
-- 根据个人风险承受能力调整阈值
-- 定期检查准备金余额
-- 关注MA200趋势变化
-- 合理分配多基金投资
+- 后端日志：SQLModel 的 `echo=True` 会打印所有 SQL 语句
+- 前端调试：使用浏览器开发者工具查看网络请求
+- 数据库查看：可以使用 SQLite 工具（如 DB Browser）查看 `invest.db`
 
-### 数据更新
-- 净值数据实时更新
-- 指数数据实时更新
-- 可手动清除缓存强制更新
-- 建议每日进行数据采样
+## ⚠️ 注意事项
 
-### 风险提示
-- 本工具仅供参考，不构成投资建议
-- 投资有风险，入市需谨慎
-- 请根据个人情况调整投资策略
-- 定期评估和调整投资组合
+1. **数据源稳定性**：部分数据源可能需要 VPN 或代理，系统已实现自动降级
+2. **缓存机制**：市场数据缓存 10 分钟，避免频繁请求
+3. **数据库备份**：建议定期备份 `invest.db` 文件
+4. **周预算重置**：系统会在检测到新的一周时自动重置周预算
 
-## 🤝 贡献指南
+## 📝 更新日志
 
-欢迎提交Issue和Pull Request！
+### v2.0
+- ✅ 重构策略引擎，使用全局准备金池
+- ✅ 添加组合调度功能
+- ✅ 优化数据获取，支持多数据源降级
+- ✅ 添加策略复盘报告
+- ✅ 前端 UI 优化，支持删除资产
 
-### 开发环境设置
-```bash
-# 克隆项目
-git clone <repository-url>
-cd CompoundInterestPlan
-
-# 创建虚拟环境
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动开发服务器
-python run_gui.py
-```
-
-### 代码规范
-- 遵循PEP 8规范
-- 添加类型注解
-- 编写文档字符串
-- 保持模块化设计
+### v1.0
+- ✅ 基础资产管理
+- ✅ 实时行情获取
+- ✅ 网格策略计算
+- ✅ 交易记录管理
 
 ## 📄 许可证
 
-MIT License
+本项目仅供学习和研究使用。
 
-## 📞 联系方式
+## 🤝 贡献
 
-如有问题或建议，请通过GitHub Issues联系。
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+**提示**：投资有风险，本系统仅供参考，不构成投资建议。请根据自身情况谨慎投资。
+
