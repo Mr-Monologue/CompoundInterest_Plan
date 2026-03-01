@@ -312,15 +312,17 @@ def calculate_grid_logic(current_price, ma200, vol_daily, reserve_balance):
 
 
 def get_instant_analysis(code: str, session: Session):
-    """实时策略分析（不写入 DB）"""
-    from main import FundHolding  # 延迟导入避免循环
+    """实时策略分析（不写入 DB，但读取真实资金池余额）"""
+    from main import FundHolding
 
     mdata = get_strategy_advice(code)
     if mdata.get("action") == "ERROR":
         return mdata
 
-    level, invest, _, _, grid_pos, reason = calculate_grid_logic(
-        mdata["current_price"], mdata["ma200"], mdata["vol_daily"], 0
+    pool_balance = _get_global_state(session).pool_balance
+
+    level, invest, to_res, from_res, grid_pos, reason = calculate_grid_logic(
+        mdata["current_price"], mdata["ma200"], mdata["vol_daily"], pool_balance
     )
     action_str = "BUY" if invest > 0 else ("WAIT" if level == "high" else "SELL")
 
@@ -329,6 +331,9 @@ def get_instant_analysis(code: str, session: Session):
         "suggested_amount": round(invest, 0),
         "reason": f"网格: {grid_pos:.1f} ({reason})",
         "grid_pos": grid_pos,
+        "pool_balance": pool_balance,
+        "from_reserve": round(from_res, 2),
+        "to_reserve": round(to_res, 2),
     })
 
     holdings = session.exec(
@@ -341,18 +346,24 @@ def get_instant_analysis(code: str, session: Session):
 
 
 def run_strategy_analysis(code: str, session: Session):
-    """执行策略分析并写入 DB"""
-    from main import FundState, DailyPlan  # 延迟导入
+    """执行单标的策略：读取真实资金池 → 计算 → 更新资金池 → 写 DailyPlan"""
+    from main import FundState, DailyPlan
 
     mdata = get_strategy_advice(code)
     if mdata.get("action") == "ERROR":
         raise Exception(mdata.get("reason"))
 
-    reserve_before = 0
+    plan_state = _get_global_state(session)
+    reserve_before = plan_state.pool_balance
+
     level, invest, to_res, from_res, grid_pos, reason = calculate_grid_logic(
         mdata["current_price"], mdata["ma200"], mdata["vol_daily"], reserve_before
     )
-    reserve_after = reserve_before
+
+    # 资金池真实变动：高估蓄力 +to_res，低估动用 -from_res
+    reserve_after = reserve_before + to_res - from_res
+    plan_state.pool_balance = reserve_after
+    session.add(plan_state)
 
     fund_state = session.exec(select(FundState).where(FundState.asset_code == code)).first()
     if not fund_state:
@@ -376,8 +387,11 @@ def run_strategy_analysis(code: str, session: Session):
         asset_code=code, date=today_str,
         close=mdata["current_price"], ma200=mdata["ma200"],
         dev_pct=grid_pos, level=level,
-        base_amt=WEEKLY_BUDGET, dyn_amt=from_res if from_res > 0 else -to_res,
-        total_amt=invest, reserve_before=reserve_before, reserve_after=reserve_after,
+        base_amt=WEEKLY_BUDGET,
+        dyn_amt=from_res if from_res > 0 else -to_res,
+        total_amt=invest,
+        reserve_before=reserve_before,
+        reserve_after=reserve_after,
     )
     session.add(plan)
     session.commit()
@@ -385,7 +399,7 @@ def run_strategy_analysis(code: str, session: Session):
     return {
         "date": today_str, "level": level, "grid_pos": f"{grid_pos:.1f}",
         "advice": f"建议买入 ¥{invest:.0f}", "details": reason,
-        "reserve_balance": reserve_after,
+        "pool_before": reserve_before, "pool_after": reserve_after,
     }
 
 
@@ -455,11 +469,17 @@ def _get_global_state(session: Session):
 
 
 def run_portfolio_strategy(session: Session):
-    """一键执行全组合策略"""
-    from main import Asset, Transaction, IndustryLimit  # 延迟导入
+    """
+    一键执行全组合策略：
+    1. 读取真实资金池余额
+    2. 按网格低估度排序、双重刹车
+    3. 从池中分配资金（低估加码消耗弹药，高估蓄力回补弹药）
+    4. 写 DailyPlan 留痕，更新资金池余额
+    """
+    from main import Asset, Transaction, IndustryLimit, DailyPlan
 
-    plan = _get_global_state(session)
-    current_pool = plan.pool_balance
+    plan_state = _get_global_state(session)
+    pool_before = plan_state.pool_balance
     assets = session.exec(select(Asset)).all()
 
     industry_limits_db = session.exec(select(IndustryLimit)).all()
@@ -487,25 +507,28 @@ def run_portfolio_strategy(session: Session):
             for ind, weight in ind_vector.items():
                 global_industry_mv[ind] += current_mv * weight
 
-        level, _, _, _, grid_pos, _ = calculate_grid_logic(
-            mdata["current_price"], mdata["ma200"], mdata["vol_daily"], 0
+        level, _, _, _, grid_pos, reason = calculate_grid_logic(
+            mdata["current_price"], mdata["ma200"], mdata["vol_daily"], pool_before
         )
         candidates.append({
             "asset": asset, "mdata": mdata, "grid_pos": grid_pos,
-            "current_mv": current_mv, "ind_vector": ind_vector,
+            "current_mv": current_mv, "ind_vector": ind_vector, "level": level,
         })
 
-    total_net_worth = max(total_market_value + current_pool, 1000)
+    total_net_worth = max(total_market_value + pool_before, 1000)
     candidates.sort(key=lambda x: x["grid_pos"])
 
     suggestions = []
-    sim_pool = current_pool
+    sim_pool = pool_before
+    today_str = date.today().isoformat()
+    total_to_reserve = 0.0
 
     for item in candidates:
         asset = item["asset"]
         grid = item["grid_pos"]
         current_mv = item["current_mv"]
         ind_vector = item.get("ind_vector")
+        mdata = item["mdata"]
 
         brake_factor = 1.0
         brake_reasons = []
@@ -532,37 +555,74 @@ def run_portfolio_strategy(session: Session):
                     brake_factor = min(brake_factor, 1.0 - (ind_ratio - ind_limit * 0.8) / (ind_limit * 0.2))
                     brake_reasons.append(f"行业[{ind}]接近上限")
 
+        actual_invest = 0.0
+        dyn_amt = 0.0
+
         if brake_factor == 0:
             suggestions.append({"code": asset.code, "name": asset.name, "amt": 0,
                                 "msg": f"🚫 禁买: {'; '.join(brake_reasons)}"})
-            continue
-        if grid > 2.0:
+        elif grid > 2.0:
+            # 高估蓄力：本期 base_investment 回补弹药池
+            saved = plan_state.base_investment
+            total_to_reserve += saved
+            dyn_amt = -saved
             suggestions.append({"code": asset.code, "name": asset.name, "amt": 0,
-                                "msg": f"📉 高估({grid:.1f}格)，建议观望"})
-            continue
-
-        multiplier = 1.0
-        if grid <= -2.0:
-            multiplier = 1.5 * (1.2 ** (abs(grid) - 2.0))
-        elif grid > 0:
-            multiplier = 1.0 - grid * 0.5
-
-        target_amt = plan.base_investment * multiplier * brake_factor
-        actual_invest = min(target_amt, sim_pool)
-
-        if actual_invest >= MIN_TRADE_AMOUNT:
-            actual_invest = round(actual_invest / 10) * 10
-            sim_pool -= actual_invest
-            msg = f"网格{grid:.1f}，建议买入"
-            if brake_reasons:
-                msg += f" (⚠️ {'; '.join(brake_reasons)})"
-            suggestions.append({"code": asset.code, "name": asset.name, "amt": actual_invest, "msg": msg})
-        elif actual_invest > 0:
-            suggestions.append({"code": asset.code, "name": asset.name, "amt": 0, "msg": "金额不足起投"})
+                                "msg": f"📉 高估({grid:.1f}格)，¥{saved:.0f} 蓄入弹药池"})
         else:
-            suggestions.append({"code": asset.code, "name": asset.name, "amt": 0, "msg": "无需操作"})
+            multiplier = 1.0
+            if grid <= -2.0:
+                multiplier = 1.5 * (1.2 ** (abs(grid) - 2.0))
+            elif grid > 0:
+                multiplier = 1.0 - grid * 0.5
 
-    return {"suggestions": suggestions, "pool_remain_sim": sim_pool}
+            target_amt = plan_state.base_investment * multiplier * brake_factor
+            actual_invest = min(target_amt, sim_pool)
+
+            if actual_invest >= MIN_TRADE_AMOUNT:
+                actual_invest = round(actual_invest / 10) * 10
+                from_reserve = max(0, actual_invest - plan_state.base_investment)
+                dyn_amt = from_reserve
+                sim_pool -= actual_invest
+                msg = f"网格{grid:.1f}，建议买入"
+                if from_reserve > 0:
+                    msg += f" (动用弹药 ¥{from_reserve:.0f})"
+                if brake_reasons:
+                    msg += f" (⚠️ {'; '.join(brake_reasons)})"
+                suggestions.append({"code": asset.code, "name": asset.name, "amt": actual_invest, "msg": msg})
+            elif actual_invest > 0:
+                suggestions.append({"code": asset.code, "name": asset.name, "amt": 0, "msg": "金额不足起投"})
+            else:
+                suggestions.append({"code": asset.code, "name": asset.name, "amt": 0, "msg": "无需操作"})
+
+        # 写 DailyPlan 留痕
+        existing = session.exec(
+            select(DailyPlan).where(DailyPlan.asset_code == asset.code, DailyPlan.date == today_str)
+        ).first()
+        if existing:
+            session.delete(existing)
+
+        session.add(DailyPlan(
+            asset_code=asset.code, date=today_str,
+            close=mdata["current_price"], ma200=mdata["ma200"],
+            dev_pct=grid, level=item["level"],
+            base_amt=plan_state.base_investment, dyn_amt=dyn_amt,
+            total_amt=actual_invest,
+            reserve_before=pool_before, reserve_after=sim_pool + total_to_reserve,
+        ))
+
+    # 高估蓄力回补到池中，投资消耗已在 sim_pool 中扣除
+    pool_after = sim_pool + total_to_reserve
+    plan_state.pool_balance = pool_after
+    session.add(plan_state)
+    session.commit()
+
+    return {
+        "suggestions": suggestions,
+        "pool_before": pool_before,
+        "pool_after": pool_after,
+        "total_invested": pool_before - sim_pool,
+        "total_saved": total_to_reserve,
+    }
 
 
 # =============================================

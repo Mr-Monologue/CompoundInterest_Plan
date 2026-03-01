@@ -286,7 +286,7 @@ class TransactionCreate(BaseModel):
     amount: float
     fee: float = 0.0
     date: str = None
-    from_pool: bool = True
+    from_pool: bool = False  # 默认不从池扣（组合策略已扣），手动买入时可设 True
 
 
 # --- 资产管理 ---
