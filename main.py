@@ -2,12 +2,12 @@
 SmartInvest v2.0 — 智能定投系统
 纯后端架构，适配 RK3588 / clawbot 部署
 
-本文件包含：数据模型、数据库、调度器、全部 API 路由
+本文件包含：调度器 + FastAPI 应用 + 全部 API 路由
+数据模型见 models.py，业务逻辑见 services.py
 """
 
 import os
 import logging
-from typing import Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
 from collections import defaultdict
@@ -16,149 +16,23 @@ os.environ.update({"http_proxy": "", "https_proxy": "", "HTTP_PROXY": "", "HTTPS
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Field, SQLModel, Session, select, create_engine
+from sqlmodel import Session, select
 from pydantic import BaseModel
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from models import (
+    Asset, Transaction, FundHolding, PlanState,
+    engine, create_db_and_tables, get_session, get_global_state,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("smartinvest")
 
-# =============================================
-#  1. 数据模型
-# =============================================
-
-
-class Asset(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    code: str = Field(index=True, unique=True)
-    name: str
-    type: str = "ETF"
-    max_weight_limit: float = Field(default=0.2)
-
-
-class Transaction(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    asset_code: str = Field(index=True)
-    date: datetime = Field(default_factory=datetime.now)
-    type: str
-    price: float
-    amount: float
-    fee: float = 0.0
-    units: float
-
-
-class FundState(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    asset_code: str = Field(index=True, unique=True)
-    cumulative_reserve_usage: float = 0.0
-    last_signal_date: Optional[str] = Field(default=None, nullable=True)
-    updated_at: datetime = Field(default_factory=datetime.now)
-
-
-class DailyPlan(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    asset_code: str = Field(index=True)
-    date: str = Field(index=True)
-    close: float
-    ma200: float
-    dev_pct: float
-    level: str
-    base_amt: float
-    dyn_amt: float
-    total_amt: float
-    reserve_before: float
-    reserve_after: float
-
-
-class PlanState(SQLModel, table=True):
-    id: Optional[int] = Field(default=1, primary_key=True)
-    pool_balance: float = 0.0
-    base_investment: float = 200.0
-    deposit_frequency: str = "MANUAL"
-    auto_deposit_amount: float = 0.0
-    updated_at: datetime = Field(default_factory=datetime.now)
-
-
-class Stock(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    code: str = Field(index=True, unique=True)
-    name: str
-    industry: str = "未分类"
-    updated_at: datetime = Field(default_factory=datetime.now)
-
-
-class FundHolding(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    fund_code: str = Field(index=True)
-    stock_code: str = Field(index=True)
-    stock_name: str
-    weight: float
-    report_date: str
-
-
-class IndustryLimit(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    industry: str = Field(index=True, unique=True)
-    max_weight: float = 0.4
-
 
 # =============================================
-#  2. 数据库
-# =============================================
-
-DB_PATH = os.environ.get("SMARTINVEST_DB", "invest.db")
-engine = create_engine(f"sqlite:///{DB_PATH}")
-
-
-def create_db_and_tables():
-    if os.path.exists(DB_PATH):
-        from sqlalchemy import inspect, text
-        inspector = inspect(engine)
-        tables = inspector.get_table_names()
-
-        if "transaction" in tables:
-            cols = [c["name"] for c in inspector.get_columns("transaction")]
-            if "fee" not in cols:
-                with engine.connect() as conn:
-                    conn.execute(text('DROP TABLE IF EXISTS "transaction"'))
-                    conn.commit()
-
-        if "planstate" in tables:
-            cols = [c["name"] for c in inspector.get_columns("planstate")]
-            if "pool_balance" not in cols or "base_investment" not in cols:
-                with engine.connect() as conn:
-                    conn.execute(text('DROP TABLE IF EXISTS "planstate"'))
-                    conn.commit()
-
-        if "asset" in tables:
-            cols = [c["name"] for c in inspector.get_columns("asset")]
-            if "max_weight_limit" not in cols:
-                with engine.connect() as conn:
-                    conn.execute(text("DROP TABLE IF EXISTS asset"))
-                    conn.commit()
-
-    SQLModel.metadata.create_all(engine)
-
-
-def get_session():
-    with Session(engine) as session:
-        yield session
-
-
-def get_global_state(session: Session):
-    state = session.exec(select(PlanState).where(PlanState.id == 1)).first()
-    if not state:
-        state = PlanState(id=1, pool_balance=0.0, base_investment=200.0, deposit_frequency="MANUAL")
-        session.add(state)
-        session.commit()
-        session.refresh(state)
-    return state
-
-
-# =============================================
-#  3. 调度器
+#  调度器
 # =============================================
 
 
@@ -253,8 +127,9 @@ class SmartInvestScheduler:
 
 scheduler = SmartInvestScheduler()
 
+
 # =============================================
-#  4. FastAPI 应用 + API 路由
+#  FastAPI 应用
 # =============================================
 
 
@@ -286,7 +161,7 @@ class TransactionCreate(BaseModel):
     amount: float
     fee: float = 0.0
     date: str = None
-    from_pool: bool = False  # 默认不从池扣（组合策略已扣），手动买入时可设 True
+    from_pool: bool = False
 
 
 # --- 资产管理 ---

@@ -22,6 +22,12 @@ import yfinance as yf
 import akshare as ak
 from sqlmodel import Session, select, delete
 
+from models import (
+    Asset, Transaction, FundState, DailyPlan, PlanState,
+    Stock, FundHolding, IndustryLimit,
+    get_global_state,
+)
+
 logger = logging.getLogger("smartinvest.services")
 
 # =============================================
@@ -313,13 +319,11 @@ def calculate_grid_logic(current_price, ma200, vol_daily, reserve_balance):
 
 def get_instant_analysis(code: str, session: Session):
     """实时策略分析（不写入 DB，但读取真实资金池余额）"""
-    from main import FundHolding
-
     mdata = get_strategy_advice(code)
     if mdata.get("action") == "ERROR":
         return mdata
 
-    pool_balance = _get_global_state(session).pool_balance
+    pool_balance = get_global_state(session).pool_balance
 
     level, invest, to_res, from_res, grid_pos, reason = calculate_grid_logic(
         mdata["current_price"], mdata["ma200"], mdata["vol_daily"], pool_balance
@@ -347,13 +351,11 @@ def get_instant_analysis(code: str, session: Session):
 
 def run_strategy_analysis(code: str, session: Session):
     """执行单标的策略：读取真实资金池 → 计算 → 更新资金池 → 写 DailyPlan"""
-    from main import FundState, DailyPlan
-
     mdata = get_strategy_advice(code)
     if mdata.get("action") == "ERROR":
         raise Exception(mdata.get("reason"))
 
-    plan_state = _get_global_state(session)
+    plan_state = get_global_state(session)
     reserve_before = plan_state.pool_balance
 
     level, invest, to_res, from_res, grid_pos, reason = calculate_grid_logic(
@@ -405,8 +407,6 @@ def run_strategy_analysis(code: str, session: Session):
 
 def generate_weekly_report_text(code: str, session: Session, days: int = 7):
     """生成策略复盘报告"""
-    from main import DailyPlan  # 延迟导入
-
     plans = session.exec(
         select(DailyPlan).where(DailyPlan.asset_code == code)
         .order_by(DailyPlan.date.desc()).limit(days)
@@ -444,8 +444,7 @@ MIN_TRADE_AMOUNT = 50.0
 
 def adjust_pool_balance(session: Session, amount: float, operation: str = "DEPOSIT"):
     """资金池充值/提现"""
-    from main import PlanState  # 延迟导入
-    state = _get_global_state(session)
+    state = get_global_state(session)
     if operation == "DEPOSIT":
         state.pool_balance += amount
     elif operation == "WITHDRAW":
@@ -453,18 +452,6 @@ def adjust_pool_balance(session: Session, amount: float, operation: str = "DEPOS
     session.add(state)
     session.commit()
     session.refresh(state)
-    return state
-
-
-def _get_global_state(session: Session):
-    """获取或初始化全局状态"""
-    from main import PlanState  # 延迟导入
-    state = session.exec(select(PlanState).where(PlanState.id == 1)).first()
-    if not state:
-        state = PlanState(id=1, pool_balance=0.0, base_investment=200.0, deposit_frequency="MANUAL")
-        session.add(state)
-        session.commit()
-        session.refresh(state)
     return state
 
 
@@ -476,9 +463,7 @@ def run_portfolio_strategy(session: Session):
     3. 从池中分配资金（低估加码消耗弹药，高估蓄力回补弹药）
     4. 写 DailyPlan 留痕，更新资金池余额
     """
-    from main import Asset, Transaction, IndustryLimit, DailyPlan
-
-    plan_state = _get_global_state(session)
+    plan_state = get_global_state(session)
     pool_before = plan_state.pool_balance
     assets = session.exec(select(Asset)).all()
 
@@ -631,7 +616,6 @@ def run_portfolio_strategy(session: Session):
 
 def fetch_holdings_akshare(code: str):
     """使用 AKShare 获取基金持仓"""
-    from main import Stock, FundHolding  # 延迟导入
     symbol = code.replace("sh", "").replace("sz", "")
     current_year = datetime.now().year
 
@@ -663,8 +647,6 @@ def fetch_holdings_akshare(code: str):
 
 def sync_fund_holdings(session: Session, fund_code: str):
     """同步单只基金的持仓到数据库"""
-    from main import Stock, FundHolding  # 延迟导入
-
     holdings, report_date = fetch_holdings_akshare(fund_code)
     if not holdings:
         return
@@ -687,8 +669,6 @@ def sync_fund_holdings(session: Session, fund_code: str):
 
 def get_fund_industry_vector(session: Session, fund_code: str):
     """计算某基金的行业分布向量"""
-    from main import Stock, FundHolding  # 延迟导入
-
     holdings = session.exec(select(FundHolding).where(FundHolding.fund_code == fund_code)).all()
     if not holdings:
         return None
