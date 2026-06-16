@@ -138,7 +138,7 @@ def api_daily_sample(
     # 3) 准备金
     with connect_db() as con:
         row = con.execute(
-            "SELECT reserve_balance FROM fund_state WHERE fund_code=?",
+            "SELECT reserve_balance, last_signal_date, last_low_trigger_date FROM fund_state WHERE fund_code=?",
             (fund_code,),
         ).fetchone()
         reserve_balance = float(row[0]) if row else 0.0
