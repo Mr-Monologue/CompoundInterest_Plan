@@ -50,7 +50,12 @@ if "!API_OK!"=="1" (
     echo     Check: %PY% -m src.app.api --port 8701
 )
 
-:: 4. Start Watcher
+:: 4. Start GUI (Streamlit) in a separate window
+echo [*] Starting GUI on port 8501...
+start "CIP-GUI" /D "%CD%" %PY% -m streamlit run src\app\ui\gui.py --server.port 8501 --server.headless true
+echo     GUI: http://localhost:8501
+
+:: 5. Start Watcher
 echo.
 echo [*] Starting Hermes Watcher...
 echo     Press Ctrl+C to stop
