@@ -122,7 +122,6 @@ with tab2:
         st.info("请选择左侧具体基金")
     else:
         code = selected
-        col1, col2, col3, col4 = st.columns(4)
         nav = query_df(
             "SELECT * FROM nav_daily_v2 WHERE fund_code=? ORDER BY date DESC LIMIT 1",
             (code,),
@@ -135,26 +134,95 @@ with tab2:
             "SELECT * FROM dca_plan_v2 WHERE fund_code=? ORDER BY date DESC LIMIT 1",
             (code,),
         )
+
         if len(nav) == 0:
             st.warning("尚无净值数据")
             st.stop()
-        col1.metric("当前净值", f"{nav['nav'].iloc[0]:.4f}")
+
+        # ── 数据源信息 ──
+        st.subheader("📋 数据来源")
+        src_col1, src_col2, src_col3 = st.columns(3)
+        nav_src = nav["source"].iloc[0] if "source" in nav.columns else "unknown"
+        nav_date = nav["date"].iloc[0] if "date" in nav.columns else "unknown"
+        src_col1.metric("净值数据源", nav_src)
+        src_col1.caption(f"净值日期: {nav_date}")
+
         if len(proxy):
-            col2.metric("MA200 偏离", f"{proxy['dev_pct'].iloc[0]:.2f}%")
-        if len(plan):
-            col3.metric("本周建议", f"¥{plan['total_amt'].iloc[0]:.2f}")
+            proxy_src = proxy["source"].iloc[0] if "source" in proxy.columns else "unknown"
+            proxy_date = proxy["date"].iloc[0] if "date" in proxy.columns else "unknown"
+            src_col2.metric("代理指数源", proxy_src)
+            src_col2.caption(f"指数日期: {proxy_date}")
+            proxy_close_val = proxy["close"].iloc[0]
+            proxy_ma200_val = proxy["ma200"].iloc[0]
+            src_col3.metric("代理指数", f"{proxy_close_val:.0f}")
+            src_col3.caption(f"MA200: {proxy_ma200_val:.1f}")
+        else:
+            src_col2.metric("代理指数源", "无数据")
+            src_col3.metric("代理指数", "N/A")
+            proxy_close_val = None
+            proxy_ma200_val = None
+
+        # ── 估值指标 ──
+        st.subheader("📊 估值指标")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("当前净值", f"{nav['nav'].iloc[0]:.4f}")
+
+        if len(proxy):
+            dev_pct_val = proxy["dev_pct"].iloc[0]
+            col2.metric("MA200 偏离", f"{dev_pct_val*100:.2f}%")
+        else:
+            dev_pct_val = None
+            col2.metric("MA200 偏离", "N/A")
+
+        # ── 风险防护状态 ──
+        if len(plan) and len(proxy):
+            level = plan["level"].iloc[0]
+            level_display = {"low": "🔴 低估", "mid": "🟡 合理", "high": "🟢 偏高"}.get(level, level)
+            col3.metric("估值层级", level_display)
             col4.metric("准备金余额", f"¥{plan['reserve_after'].iloc[0]:.2f}")
+
+            # risk_guard 检查
+            from src.app.core.risk_guard import advice_allowed
+            risk = advice_allowed(
+                nav=float(nav["nav"].iloc[0]),
+                proxy_close=float(proxy["close"].iloc[0]) if len(proxy) else None,
+                ma200=float(proxy["ma200"].iloc[0]) if len(proxy) else None,
+                dev_pct=float(proxy["dev_pct"].iloc[0]) if len(proxy) else None,
+                source=proxy_src,
+            )
+
+            st.subheader("🛡️ 风险防护")
+            if not risk.passed:
+                st.error("⚠️ 数据异常，需要人工复核")
+                for e in risk.errors:
+                    st.warning(f"• {e}")
+                st.info("系统已阻断本次建议生成。原因可能是：Mock 数据源、净值异常、MA200 异常、偏离度过大。")
+            else:
+                st.success("✅ 风险防护通过 — 数据可信")
+                st.subheader("💰 本周定投建议")
+                ac1, ac2, ac3 = st.columns(3)
+                ac1.metric("固定定投", f"¥{plan['base_amt'].iloc[0]:.2f}")
+                ac2.metric("动态定投", f"¥{plan['dyn_amt'].iloc[0]:.2f}")
+                ac3.metric("总建议金额", f"¥{plan['total_amt'].iloc[0]:.2f}",
+                          delta=f"准备金: ¥{plan['reserve_before'].iloc[0]:.0f} → ¥{plan['reserve_after'].iloc[0]:.0f}")
+        elif len(proxy):
+            col3.metric("估值层级", "N/A")
+            col4.metric("准备金余额", "N/A")
+            st.info("尚无定投建议数据，请在侧边栏点击「采样并保存」。")
+        else:
+            col3.metric("估值层级", "N/A")
+            col4.metric("准备金余额", "N/A")
 
         # 历史图表（净值&MA200、偏离、建议）
         nav_hist = query_df(
             "SELECT date,nav FROM nav_daily_v2 WHERE fund_code=? ORDER BY date", (code,)
         )
         idx_hist = query_df(
-            "SELECT date,close,ma200,dev_pct FROM proxy_daily_v2 WHERE fund_code=? ORDER BY date",
+            "SELECT date,close,ma200,dev_pct,source FROM proxy_daily_v2 WHERE fund_code=? ORDER BY date",
             (code,),
         )
         plan_hist = query_df(
-            "SELECT date,total_amt,base_amt,dyn_amt FROM dca_plan_v2 WHERE fund_code=? ORDER BY date",
+            "SELECT date,total_amt,base_amt,dyn_amt,level FROM dca_plan_v2 WHERE fund_code=? ORDER BY date",
             (code,),
         )
 
@@ -162,10 +230,11 @@ with tab2:
             st.subheader("指数走势 & MA200")
             st.line_chart(idx_hist.set_index("date")[["close", "ma200"]])
 
-            st.subheader("MA200 偏离度")
+            st.subheader("MA200 偏离度 (dev_pct = (proxy_close - ma200) / ma200)")
+            st.caption("数据源在 proxy_daily_v2.source 列中记录。Mock 源不生成买入建议。")
             st.line_chart(
                 idx_hist.set_index("date")[["dev_pct"]].rename(
-                    columns={"dev_pct": "MA200偏离%"}
+                    columns={"dev_pct": "MA200偏离"}
                 )
             )
 

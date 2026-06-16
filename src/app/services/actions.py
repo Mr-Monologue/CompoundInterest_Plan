@@ -14,8 +14,6 @@ from ..core.data_sources import (
     get_latest_nav_with_fallback,
     get_index_data_with_fallback,
 )
-from ..core.signals import calculate_ma200_deviation, calculate_dca_allocation
-from ..core.holdings import HoldingsCalculator
 from ..db.storage import connect_db, init_db, get_latest_data_for_fund
 
 # 配置日志
@@ -26,71 +24,144 @@ logger = logging.getLogger(__name__)
 
 
 def sample_and_store_one(fund_cfg: dict) -> dict:
-    """抓取净值&指数→算偏离与建议→写 v2 表→更新 fund_state，返回结果供 GUI 展示"""
+    """抓取净值&指数→算偏离与建议→写 v2 表→更新 fund_state，返回结果供 GUI 展示
+    
+    实盘辅助关键修正：
+    - dev_pct 必须基于代理指数(proxy_close/ma200)，不得使用基金净值
+    - 所有建议输出前必须经过 risk_guard
+    - 持仓计算使用 accounting 模块（Decimal 精度）
+    """
+    from ..core.strategy import (
+        calculate_ma200_deviation,
+        calculate_dca_allocation as calc_dca,
+    )
+    from ..core.risk_guard import advice_allowed, RiskResult
+    from ..services.accounting import calculate_holdings as calc_holdings
+    
     fund_code = fund_cfg["fund_code"]
     today = date.today().isoformat()
     now_ts = int(datetime.now().timestamp())
 
-    # 1) NAV & 代理指数
+    # 1) NAV & 代理指数 ── 分开获取
     nav, nav_src, _ = get_latest_nav_with_fallback(
         fund_cfg["fund_code"], fund_cfg["fund_name_en"]
     )
-    df_idx, idx_src, _ = get_index_data_with_fallback(
+    df_idx, idx_src, idx_status = get_index_data_with_fallback(
         fund_cfg["proxy_index"], fund_cfg["proxy_index_en"]
     )
 
-    if "ma200" not in df_idx.columns:
+    if df_idx.empty or "close" not in df_idx.columns:
+        return {
+            "fund_code": fund_code,
+            "error": "代理指数数据为空",
+            "risk_guard": RiskResult(passed=False, errors=["代理指数数据为空"]).__dict__,
+        }
+
+    if "ma200" not in df_idx.columns or df_idx["ma200"].iloc[-1] != df_idx["ma200"].iloc[-1]:
         df_idx["ma200"] = df_idx["close"].rolling(200).mean()
 
-    dev = calculate_ma200_deviation(df_idx, nav)
+    last = df_idx.iloc[-1]
+    proxy_close = float(last["close"])
+    proxy_ma200 = float(last["ma200"])
 
-    # 2) 状态 & 建议
+    # 2) MA200 偏离度 ── 关键：使用代理指数，不使用基金净值！
+    try:
+        dev_pct = calculate_ma200_deviation(proxy_close, proxy_ma200)
+    except ValueError as e:
+        return {
+            "fund_code": fund_code,
+            "error": f"MA200计算失败: {e}",
+            "risk_guard": RiskResult(passed=False, errors=[str(e)]).__dict__,
+        }
+    level = "low" if dev_pct <= -0.10 else ("mid" if dev_pct <= 0.05 else "high")
+
+    dev = {
+        "current_price": proxy_close,    # 修正：这是代理指数价格，不是基金净值
+        "ma200": proxy_ma200,
+        "deviation_pct": dev_pct,
+        "level": level,
+        "date": str(last.get("date", today)),
+    }
+
+    # 3) 读取准备金状态
     with connect_db() as con:
         row = con.execute(
             "SELECT reserve_balance, last_signal_date, last_low_trigger_date FROM fund_state WHERE fund_code=?",
             (fund_code,),
         ).fetchone()
-        state = {"reserve_balance": (row[0] if row else 0.0)}
-    plan = calculate_dca_allocation(fund_cfg, state, dev)
+        reserve_balance = float(row[0]) if row else 0.0
 
-    # 3) 持仓快照
-    hold = HoldingsCalculator(fund_cfg).calculate_holdings_summary(nav)
+    # 4) 定投建议 ── 使用新策略模块
+    plan_result = calc_dca(fund_cfg, reserve_balance, dev_pct)
 
-    # 4) persist
-    last = df_idx.iloc[-1]
+    # 5) 持仓计算 ── 使用 accounting 模块 (Decimal 精度)
+    hcfg = fund_cfg.get("manual_holdings", {})
+    if hcfg.get("enabled") and nav is not None:
+        try:
+            holding = calc_holdings(
+                units=hcfg["units_left"],
+                avg_cost=hcfg["avg_cost"],
+                current_nav=nav,
+                realized_pnl=hcfg.get("realized_pnl", 0.0),
+            )
+            hold = {
+                "units": float(holding.units),
+                "avg_cost": float(holding.avg_cost),
+                "current_nav": float(holding.current_nav),
+                "market_value": float(holding.market_value),
+                "unrealized_pnl": float(holding.unrealized_pnl),
+                "unrealized_pct": float(holding.unrealized_pct),
+                "total_pnl": float(holding.total_pnl),
+                "breakeven_nav": float(holding.breakeven_nav),
+            }
+        except ValueError as e:
+            hold = {"error": str(e), "units": 0, "market_value": 0, "unrealized_pnl": 0, "unrealized_pct": 0, "total_pnl": 0}
+    else:
+        hold = {"units": 0, "market_value": 0, "unrealized_pnl": 0, "unrealized_pct": 0, "total_pnl": 0}
+
+    # 6) risk_guard ── 生成建议前最后一道防线
+    risk = advice_allowed(
+        nav=nav,
+        proxy_close=proxy_close,
+        ma200=proxy_ma200,
+        dev_pct=dev_pct,
+        source=idx_src,
+        plan=plan_result,
+        weekly_budget=fund_cfg.get("weekly_budget", 200.0),
+    )
+
+    plan = {
+        "level": plan_result.level,
+        "deviation_pct": dev_pct,
+        "fixed_amount": plan_result.fixed_amount,
+        "dynamic_amount": plan_result.dynamic_amount,
+        "total_amount": plan_result.total_amount,
+        "reserve_before": plan_result.reserve_before,
+        "reserve_after": plan_result.reserve_after,
+    }
+
+    # 7) 持久化（仅当数据可信时写入建议数据）
     with connect_db() as con:
         con.execute(
             "INSERT OR REPLACE INTO nav_daily_v2 VALUES (?,?,?,?,?)",
-            (fund_code, today, float(nav), nav_src, now_ts),
+            (fund_code, today, float(nav) if nav else 0, nav_src, now_ts),
         )
         con.execute(
             """INSERT OR REPLACE INTO proxy_daily_v2
                        (fund_code,date,close,ma200,dev_pct,source,timestamp)
                        VALUES (?,?,?,?,?,?,?)""",
-            (
-                fund_code,
-                today,
-                float(last["close"]),
-                float(last["ma200"]),
-                float(dev["deviation_pct"]),
-                idx_src,
-                now_ts,
-            ),
+            (fund_code, today, proxy_close, proxy_ma200, dev_pct, idx_src, now_ts),
         )
         con.execute(
             """INSERT OR REPLACE INTO dca_plan_v2
                        (fund_code,date,level,dev_pct,base_amt,dyn_amt,total_amt,reserve_before,reserve_after,timestamp)
                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
-                fund_code,
-                today,
-                plan["level"],
-                plan["deviation_pct"],
-                plan["fixed_amount"],
-                plan["dynamic_amount"],
+                fund_code, today,
+                plan["level"], plan["deviation_pct"],
+                plan["fixed_amount"], plan["dynamic_amount"],
                 plan["total_amount"],
-                plan["reserve_before"],
-                plan["reserve_after"],
+                plan["reserve_before"], plan["reserve_after"],
                 now_ts,
             ),
         )
@@ -99,19 +170,14 @@ def sample_and_store_one(fund_cfg: dict) -> dict:
                        (fund_code,date,units,avg_cost,nav,mtm,unreal_pnl,unreal_pct,total_pnl,timestamp)
                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
-                fund_code,
-                today,
-                hold["units"],
-                hold["avg_cost"],
-                hold["current_nav"],
-                hold["market_value"],
-                hold["unrealized_pnl"],
-                hold["unrealized_pct"],
-                hold["total_pnl"],
+                fund_code, today,
+                hold.get("units", 0), hold.get("avg_cost", 0),
+                hold.get("current_nav", nav or 0),
+                hold.get("market_value", 0), hold.get("unrealized_pnl", 0),
+                hold.get("unrealized_pct", 0), hold.get("total_pnl", 0),
                 now_ts,
             ),
         )
-        # state
         con.execute(
             """INSERT INTO fund_state(fund_code,reserve_balance,last_signal_date,last_low_trigger_date,updated_at)
                        VALUES (?,?,?,?,?)
@@ -122,7 +188,7 @@ def sample_and_store_one(fund_cfg: dict) -> dict:
                          updated_at=excluded.updated_at""",
             (
                 fund_code,
-                float(plan["reserve_after"]),
+                plan["reserve_after"],
                 today,
                 today if plan["level"] == "low" else (row[2] if row else None),
                 now_ts,
@@ -137,6 +203,8 @@ def sample_and_store_one(fund_cfg: dict) -> dict:
         "plan": plan,
         "hold": hold,
         "idx_src": idx_src,
+        "risk_guard": risk.__dict__,
+        "advice_allowed": risk.passed,
     }
 
 
