@@ -46,16 +46,17 @@ def _check_idempotency(
     if not idempotency_key:
         return None
 
-    col = "idempotency_key" if table != "pool_ledger" else "idempotency_key"
     try:
+        con.row_factory = sqlite3.Row
         row = con.execute(
             f"SELECT * FROM {table} WHERE idempotency_key=? LIMIT 1",
             (idempotency_key,),
         ).fetchone()
+        con.row_factory = None
         if row:
             return dict(row)
     except sqlite3.OperationalError:
-        pass  # 列可能还不存在
+        pass
     return None
 
 
@@ -231,10 +232,21 @@ def api_daily_sample(
              today if level == "low" else (row[2] if row else None), now_ts),
         )
 
+    action_allowed = risk.passed and (idx_src.lower() != "mock")
+
     return {
         "fund_code": fund_code,
         "status": "created",
+        "action_allowed": action_allowed,
+        "recommended_amount": plan_result.total_amount if action_allowed else None,
         **calculation_trace,
+        "calculation_trace": {
+            "computed_amount": plan_result.total_amount,
+            "fixed_amount": plan_result.fixed_amount,
+            "dynamic_amount": plan_result.dynamic_amount,
+            "reserve_before": plan_result.reserve_before,
+            "reserve_after": plan_result.reserve_after,
+        },
         "idempotency_key": idem_key,
         "created_by": created_by,
         "hold": hold,
@@ -285,17 +297,29 @@ def api_get_plan(fund_code: str) -> Dict[str, Any]:
         "SELECT * FROM dca_plan_v2 WHERE fund_code=? ORDER BY date DESC LIMIT 1", (fund_code,)
     )
     if len(plan):
+        is_trusted = (result.get("proxy_source", "") or "").lower() != "mock"
+        level = str(plan["level"].iloc[0])
+        action_allowed = is_trusted and level != "invalid"
+        computed = float(plan["total_amt"].iloc[0])
         result.update({
             "date": str(plan["date"].iloc[0]),
-            "level": str(plan["level"].iloc[0]),
+            "level": level,
             "dev_pct": float(plan["dev_pct"].iloc[0]),
-            "fixed_amount": float(plan["base_amt"].iloc[0]),
-            "dynamic_amount": float(plan["dyn_amt"].iloc[0]),
-            "total_amount": float(plan["total_amt"].iloc[0]),
-            "reserve_before": float(plan["reserve_before"].iloc[0]),
-            "reserve_after": float(plan["reserve_after"].iloc[0]),
+            "action_allowed": action_allowed,
+            "recommended_amount": computed if action_allowed else None,
+            "calculation_trace": {
+                "fixed_amount": float(plan["base_amt"].iloc[0]),
+                "dynamic_amount": float(plan["dyn_amt"].iloc[0]),
+                "computed_amount": computed,
+                "reserve_before": float(plan["reserve_before"].iloc[0]),
+                "reserve_after": float(plan["reserve_after"].iloc[0]),
+            },
             "created_by": str(plan["created_by"].iloc[0]) if "created_by" in plan.columns else "unknown",
         })
+    else:
+        result["action_allowed"] = False
+        result["recommended_amount"] = None
+        result["calculation_trace"] = {}
     return result
 
 
@@ -416,7 +440,7 @@ def api_pool_deposit(
         _ensure_idempotency_col(con, "pool_ledger")
         existing = _check_idempotency(con, "pool_ledger", idem_key)
         if existing:
-            return {"status": "idempotent", "idempotency_key": idem_key}
+            return {"status": "idempotent", "idempotency_key": idem_key, "existing": existing}
 
         con.execute(
             "UPDATE fund_state SET reserve_balance = reserve_balance + ? WHERE fund_code=?",
@@ -450,7 +474,7 @@ def api_pool_adjust(
         _ensure_idempotency_col(con, "pool_ledger")
         existing = _check_idempotency(con, "pool_ledger", idem_key)
         if existing:
-            return {"status": "idempotent", "idempotency_key": idem_key}
+            return {"status": "idempotent", "idempotency_key": idem_key, "existing": existing}
 
         con.execute(
             "UPDATE fund_state SET reserve_balance = reserve_balance + ? WHERE fund_code=?",

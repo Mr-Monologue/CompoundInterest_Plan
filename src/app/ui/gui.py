@@ -80,14 +80,17 @@ with tabs[0]:
         plan = api_get_plan(code)
         if not data.get("nav"):
             continue
+        action_ok = plan.get("action_allowed", False)
+        rec = plan.get("recommended_amount")
+        trace = plan.get("calculation_trace", {})
         rows.append({
             "基金": f"{code} {f['fund_name']}",
             "净值": data.get("nav"),
             "偏离%": round(data.get("dev_pct", 0) * 100, 2),
             "估值": plan.get("level", "?").upper(),
-            "建议(¥)": plan.get("total_amount"),
-            "固定/动态": f"{plan.get('fixed_amount',0):.2f}/{plan.get('dynamic_amount',0):.2f}",
-            "准备金": plan.get("reserve_after"),
+            "状态": "✅ OK" if action_ok else "⛔ BLOCKED",
+            "建议(¥)": f"¥{rec:.2f}" if rec is not None else "null",
+            "准备金": trace.get("reserve_after"),
             "日期": data.get("nav_date", "?"),
             "来源": plan.get("created_by", "?"),
         })
@@ -126,25 +129,30 @@ with tabs[1]:
         c3.metric("MA200 偏离", f"{dev_pct*100:.2f}%")
         c4.metric("估值层级", {"low": "🔴 低估", "mid": "🟡 合理", "high": "🟢 偏高"}.get(plan.get("level"), "?"))
 
-        # risk_guard
+        # risk_guard — 使用 API 返回的 action_allowed
         st.subheader("🛡️ 风险防护")
-        risk = advice_allowed(
-            nav=data.get("nav"), proxy_close=proxy_close, ma200=proxy_ma200,
-            dev_pct=dev_pct, source=data.get("proxy_source", ""),
-        )
-        if not risk.passed:
-            st.error("⚠️ 数据异常，需要人工复核")
+        action_ok = plan.get("action_allowed", False)
+        rec = plan.get("recommended_amount")
+        trace = plan.get("calculation_trace", {})
+
+        if not action_ok:
+            st.error("⛔ BLOCKED — 数据异常，需要人工复核")
+            # 从 risk_guard 获取失败原因
+            risk = advice_allowed(
+                nav=data.get("nav"), proxy_close=proxy_close, ma200=proxy_ma200,
+                dev_pct=dev_pct, source=data.get("proxy_source", ""),
+            )
             for e in risk.errors:
                 st.warning(f"• {e}")
-            st.info("系统已阻断本次建议生成。原因可能是：Mock 数据源、净值异常、MA200 异常、偏离度过大。")
+            st.caption(f"recommended_amount = null（computed_amount={trace.get('computed_amount',0):.2f} 仅供审计）")
         else:
             st.success("✅ 风险防护通过 — 数据可信")
             st.subheader("💰 本周定投建议")
             c1, c2, c3 = st.columns(3)
-            c1.metric("固定定投", f"¥{plan.get('fixed_amount',0):.2f}")
-            c2.metric("动态定投", f"¥{plan.get('dynamic_amount',0):.2f}")
-            c3.metric("总建议金额", f"¥{plan.get('total_amount',0):.2f}",
-                      delta=f"准备金: ¥{plan.get('reserve_before',0):.0f} → ¥{plan.get('reserve_after',0):.0f}")
+            c1.metric("固定定投", f"¥{trace.get('fixed_amount',0):.2f}")
+            c2.metric("动态定投", f"¥{trace.get('dynamic_amount',0):.2f}")
+            c3.metric("建议金额", f"¥{rec:.2f}" if rec is not None else "null",
+                      delta=f"准备金: ¥{trace.get('reserve_before',0):.0f} → ¥{trace.get('reserve_after',0):.0f}")
 
             # 审计信息
             with st.expander("📋 审计详情 (calculation_trace)"):
@@ -155,12 +163,9 @@ with tabs[1]:
                     "proxy_close": proxy_close, "proxy_ma200": proxy_ma200,
                     "dev_pct": dev_pct, "level": plan.get("level"),
                     "data_source": data.get("proxy_source", ""),
-                    "fixed_amount": plan.get("fixed_amount"),
-                    "dynamic_amount": plan.get("dynamic_amount"),
-                    "reserve_before": plan.get("reserve_before"),
-                    "reserve_after": plan.get("reserve_after"),
-                    "risk_guard_passed": risk.passed,
-                    "risk_guard_errors": risk.errors,
+                    "action_allowed": action_ok,
+                    "recommended_amount": rec,
+                    "calculation_trace": trace,
                     "created_by": plan.get("created_by", "unknown"),
                 })
 

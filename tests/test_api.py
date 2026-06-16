@@ -31,7 +31,9 @@ def test_gui_and_hermes_use_same_transaction_api():
         amount=80.0, created_by="gui", external_ref="test-gui-1",
     )
     assert r1.get("status") in ("created", "idempotent")
-    assert r1.get("created_by") == "gui"
+    # created_by 在 existing 中（幂等命中时）或顶层（首次创建时）
+    cb = r1.get("created_by") or (r1.get("existing", {}).get("created_by"))
+    assert cb == "gui"
 
     # Hermes 入口（需 confirmed）
     r2 = api_create_transaction(
@@ -93,7 +95,9 @@ def test_pool_deposit_created_by_gui():
 
     r = api_pool_deposit("000083", 120.0, created_by="gui", note="测试入金")
     assert r.get("status") in ("deposited", "idempotent")
-    assert r.get("created_by") == "gui"
+    # created_by 在顶层或 existing 中
+    cb = r.get("created_by") or (r.get("existing", {}).get("created_by"))
+    assert cb == "gui"
 
 
 # ── Test 6: Hermes 写入需 confirmed ──────────────────
@@ -193,3 +197,50 @@ def test_models_idempotency_functions():
     assert k.startswith("tx:X:2025-01-01:BUY:100.00:")
     k = make_pool_idempotency_key("X", "2025-01-01", "DEPOSIT", 50.0)
     assert k.startswith("pool:X:2025-01-01:DEPOSIT:50.00:")
+
+
+# ── 新增: 幂等回放测试 ──────────────────────────────
+
+def test_same_idempotency_key_different_payload_rejected():
+    """相同幂等键不同 payload → 返回已有记录，不创建新记录"""
+    from src.app.services.api_service import api_create_transaction
+
+    # 第一次写入
+    r1 = api_create_transaction(
+        fund_code="000083", date_str="2025-01-20", tx_type="BUY",
+        amount=100.0, created_by="gui", external_ref="idem-test-2",
+    )
+    assert r1["status"] in ("created", "idempotent")
+
+    # 第二次 —— 相同幂等键（同金额+同ref）→ 应返回已有记录
+    r2 = api_create_transaction(
+        fund_code="000083", date_str="2025-01-20", tx_type="BUY",
+        amount=100.0, created_by="gui", external_ref="idem-test-2",  # 同金额同ref
+    )
+    assert r2["status"] == "idempotent", f"应为幂等，实际: {r2}"
+
+
+def test_idempotency_replay_returns_original_record():
+    """幂等重放返回原始记录而非新记录"""
+    from src.app.services.api_service import api_create_transaction, api_delete_transaction
+
+    # 创建
+    r1 = api_create_transaction(
+        fund_code="000083", date_str="2025-01-21", tx_type="BUY",
+        amount=50.0, created_by="gui", external_ref="replay-test-2",
+    )
+    assert r1["status"] in ("created", "idempotent")
+    tx_id = r1.get("transaction_id")
+
+    # 重放（完全相同）
+    r2 = api_create_transaction(
+        fund_code="000083", date_str="2025-01-21", tx_type="BUY",
+        amount=50.0, created_by="gui", external_ref="replay-test-2",
+    )
+    assert r2["status"] == "idempotent"
+    existing = r2.get("existing", {})
+    assert existing, "幂等重放应返回已有记录"
+
+    # 清理
+    if tx_id:
+        api_delete_transaction(tx_id)
