@@ -13,10 +13,10 @@ API_BASE=http://127.0.0.1:8701
 CIP_API_TOKEN=your-local-token
 
 # 调度时间（可选）
-HERMES_WATCHER_DAILY_TIME=20:30
-HERMES_WATCHER_ANOMALY_TIME=20:40
-HERMES_WATCHER_WEEKLY_DAY=THU
-HERMES_WATCHER_WEEKLY_TIME=21:00
+HERMES_WATCHER_DAILY_TIME=18:00
+HERMES_WATCHER_ANOMALY_TIME=18:10
+HERMES_WATCHER_WEEKLY_DAY=FRI
+HERMES_WATCHER_WEEKLY_TIME=18:20
 
 # 自动补写（默认 false）
 HERMES_WATCHER_AUTO_CATCHUP=false
@@ -42,9 +42,9 @@ python scripts/hermes_watcher.py
 
 | 时间 | 任务 | API | 输出 |
 |------|------|-----|------|
-| 每天 20:30 | 每日采样 | `POST /api/snapshot/daily/run` | `reports/daily/YYYY-MM-DD.md` |
-| 每天 20:40 | 异常检查 | `GET /api/plan/latest` | `alerts/YYYY-MM-DD_ANOMALY.md`（仅异常时） |
-| 每四 21:00 | 周报 | `GET /api/reports/weekly` | `reports/weekly/YYYY-WW.md` |
+| 每天 18:00 | 每日采样 | `POST /api/snapshot/daily/run` | `reports/daily/YYYY-MM-DD.md` |
+| 每天 18:10 | 异常检查 | `GET /api/plan/latest` | `alerts/YYYY-MM-DD_ANOMALY.md`（仅异常时） |
+| 每五 18:20 | 周报 | `GET /api/reports/weekly` | `reports/weekly/YYYY-WW.md` |
 | 每 30 分钟 | 心跳 | - | 控制台输出 |
 
 ## 行为说明
@@ -123,8 +123,8 @@ alerts/
 |------|--------|------|
 | `API_BASE` | `http://127.0.0.1:8701` | FastAPI 地址 |
 | `CIP_API_TOKEN` | `local-dev-token-change-me` | API 写操作 Token |
-| `HERMES_WATCHER_DAILY_TIME` | `20:30` | 每日采样时间 |
-| `HERMES_WATCHER_ANOMALY_TIME` | `20:40` | 异常检查时间 |
-| `HERMES_WATCHER_WEEKLY_DAY` | `THU` | 周报星期 |
-| `HERMES_WATCHER_WEEKLY_TIME` | `21:00` | 周报时间 |
+| `HERMES_WATCHER_DAILY_TIME` | `18:00` | 每日采样时间 |
+| `HERMES_WATCHER_ANOMALY_TIME` | `18:10` | 异常检查时间 |
+| `HERMES_WATCHER_WEEKLY_DAY` | `FRI` | 周报星期 |
+| `HERMES_WATCHER_WEEKLY_TIME` | `18:20` | 周报时间 |
 | `HERMES_WATCHER_AUTO_CATCHUP` | `false` | 自动补写缺失的采样 |
