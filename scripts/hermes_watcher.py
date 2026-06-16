@@ -358,12 +358,38 @@ def scheduler_loop():
 
     today_done = set()
     week_done = set()
+    first_loop = True
 
     while running:
         now = datetime.now()
         weekday = now.strftime("%a").upper()
         time_str = now.strftime("%H:%M")
         week_id = f"{now.isocalendar()[0]}-W{now.isocalendar()[1]:02d}"
+
+        # 启动时补跑：如果今天的时间已过，立即执行
+        if first_loop:
+            first_loop = False
+            daily_h, daily_m = map(int, DAILY_TIME.split(":"))
+            daily_passed = (now.hour > daily_h) or (now.hour == daily_h and now.minute >= daily_m)
+            if daily_passed and "daily" not in today_done:
+                log(f"⏰ 今天 {DAILY_TIME} 已过，立即补跑采样")
+                today_done.add("daily")
+                run_daily_sample()
+
+            anom_h, anom_m = map(int, ANOMALY_TIME.split(":"))
+            anom_passed = (now.hour > anom_h) or (now.hour == anom_h and now.minute >= anom_m)
+            if anom_passed and "anomaly" not in today_done:
+                log(f"⏰ 今天 {ANOMALY_TIME} 已过，立即补跑异常检查")
+                today_done.add("anomaly")
+                run_anomaly_check()
+
+            if weekday == WEEKLY_DAY[:3] and week_id not in week_done:
+                w_h, w_m = map(int, WEEKLY_TIME.split(":"))
+                w_passed = (now.hour > w_h) or (now.hour == w_h and now.minute >= w_m)
+                if w_passed:
+                    log(f"⏰ 今天 {WEEKLY_TIME} 已过，立即补跑周报")
+                    week_done.add(week_id)
+                    run_weekly_report()
 
         # 每日采样
         if time_str == DAILY_TIME and "daily" not in today_done:
