@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 title Hermes Watcher
 
 cd /d "%~dp0"
@@ -25,15 +26,28 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-:: 3. Check if API is running on port 8701
-%PY% -c "import socket; s=socket.socket(); s.settimeout(1); r=s.connect_ex(('127.0.0.1',8701)); s.close(); exit(r)" 2>nul
-if %ERRORLEVEL% NEQ 0 (
-    echo [*] Starting FastAPI on port 8701...
-    start "CIP-API" %PY% -m src.app.api --port 8701
-    echo [*] Waiting 3 seconds...
-    timeout /t 3 /nobreak >nul
+:: 3. Check / start API (retry up to 5 times, 2 sec each)
+set "API_OK=0"
+for /L %%i in (1,1,5) do (
+    if "!API_OK!"=="0" (
+        %PY% -c "import socket; s=socket.socket(); s.settimeout(1); r=s.connect_ex(('127.0.0.1',8701)); s.close(); exit(r)" 2>nul
+        if !ERRORLEVEL! EQU 0 (
+            set "API_OK=1"
+        ) else (
+            if %%i EQU 1 (
+                echo [*] Starting FastAPI on port 8701...
+                start "CIP-API" /D "%CD%" %PY% -m src.app.api --port 8701
+            )
+            echo [*] Waiting for API... (%%i/5)
+            timeout /t 2 /nobreak >nul
+        )
+    )
+)
+if "!API_OK!"=="1" (
+    echo [OK] FastAPI running on port 8701
 ) else (
-    echo [OK] FastAPI already running
+    echo [!] API did not start. Watcher will retry later.
+    echo     Check: %PY% -m src.app.api --port 8701
 )
 
 :: 4. Start Watcher
