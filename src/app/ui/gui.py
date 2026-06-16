@@ -95,7 +95,7 @@ with tabs[0]:
             "来源": plan.get("created_by", "?"),
         })
     if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), width='stretch')
     else:
         st.info("暂无数据。请在侧边栏选择基金并点击采样。")
 
@@ -253,7 +253,7 @@ with tabs[3]:
         st.subheader("📒 资金池流水")
         ledger = api_pool_ledger(code, limit=20)
         if ledger:
-            st.dataframe(pd.DataFrame(ledger), use_container_width=True)
+            st.dataframe(pd.DataFrame(ledger), width='stretch')
         else:
             st.info("暂无流水记录")
 
