@@ -10,10 +10,14 @@ from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Any
 
 from ..core.config import load_all_funds_config, save_config
-from ..core.data_sources import (
-    get_latest_nav_with_fallback,
-    get_index_data_with_fallback,
-)
+try:
+    from ..core.data_sources import (
+        get_latest_nav_with_fallback,
+        get_index_data_with_fallback,
+    )
+except ImportError:
+    get_latest_nav_with_fallback = None
+    get_index_data_with_fallback = None
 from ..db.storage import connect_db, init_db, get_latest_data_for_fund
 
 # 配置日志
@@ -564,3 +568,211 @@ def generate_weekly_narrative(fund_code: str | None = None, days: int = 7) -> st
         lines.append(_one_fund_week_summary(code, sub.reset_index(drop=True)))
 
     return "\n".join(lines)
+
+
+# ── Dry-run CLI ─────────────────────────────────────────
+
+def dry_run_all(output_format: str = "json", offline: bool = False) -> None:
+    """对所有基金执行 dry-run，输出审计链。
+
+    offline=True: 只从已有数据库读取最新数据，不做任何网络请求。
+    offline=False: 调用 sample_and_store_one（可能触发网络请求）。
+    """
+    import json as _json
+
+    if offline:
+        results = _dry_run_offline()
+    else:
+        results = _dry_run_live()
+
+    if output_format == "json":
+        print(_json.dumps(results, ensure_ascii=False, indent=2, default=str))
+    elif output_format == "table":
+        print(f"{'Code':<8} {'NAV':>8} {'Dev%':>8} {'Trusted':>8} {'Guard':>8} {'Fixed':>8} {'Dyn':>8} {'Reserve':>8}")
+        print("-" * 72)
+        for e in results:
+            print(
+                f"{e.get('fund_code','?'):<8} "
+                f"{e.get('fund_nav') or '?':>8} "
+                f"{e.get('dev_pct',0)*100 if e.get('dev_pct') else 0:>7.2f}% "
+                f"{'YES' if e.get('is_trusted') else 'NO':>8} "
+                f"{'PASS' if e.get('risk_guard_passed') else 'FAIL':>8} "
+                f"{e.get('fixed_amount') or 0:>8.1f} "
+                f"{e.get('dynamic_amount') or 0:>8.1f} "
+                f"{e.get('reserve_after') or 0:>8.1f}"
+            )
+
+
+def _dry_run_offline() -> list:
+    """离线 dry-run：仅从数据库读取最新数据，应用 risk_guard + 策略计算。"""
+    from ..core.risk_guard import advice_allowed
+    from ..core.strategy import calculate_dca_allocation as calc_dca
+
+    results = []
+    with connect_db() as con:
+        fund_codes = [
+            r[0] for r in con.execute(
+                "SELECT DISTINCT fund_code FROM nav_daily_v2 ORDER BY fund_code"
+            ).fetchall()
+        ]
+
+    funds, _ = load_all_funds_config()
+    code_to_cfg = {f["fund_code"]: f for f in funds}
+
+    for code in fund_codes:
+        cfg = code_to_cfg.get(code, {"weekly_budget": 200.0, "fixed_ratio": 0.40})
+        proxy_code = cfg.get("proxy_index", "?")
+
+        nav_row = query_df(
+            "SELECT * FROM nav_daily_v2 WHERE fund_code=? ORDER BY date DESC LIMIT 1",
+            (code,),
+        )
+        proxy_row = query_df(
+            "SELECT date,close,ma200,dev_pct,source FROM proxy_daily_v2 WHERE fund_code=? ORDER BY date DESC LIMIT 1",
+            (code,),
+        )
+
+        if len(nav_row) == 0:
+            results.append({"fund_code": code, "error": "无净值数据", "risk_guard_passed": False})
+            continue
+
+        nav_val = float(nav_row["nav"].iloc[0])
+        nav_date = str(nav_row["date"].iloc[0])
+        nav_src = str(nav_row["source"].iloc[0]) if "source" in nav_row.columns else "?"
+
+        if len(proxy_row) == 0:
+            results.append({
+                "fund_code": code, "fund_nav": nav_val,
+                "data_source": nav_src, "is_trusted": False,
+                "risk_guard_passed": False,
+                "risk_guard_errors": ["无代理指数数据"],
+            })
+            continue
+
+        proxy_close = float(proxy_row["close"].iloc[0])
+        proxy_ma200 = float(proxy_row["ma200"].iloc[0])
+        dev_pct = float(proxy_row["dev_pct"].iloc[0])
+        idx_src = str(proxy_row["source"].iloc[0])
+        idx_date = str(proxy_row["date"].iloc[0])
+
+        # 准备金
+        state = query_df(
+            "SELECT reserve_balance FROM fund_state WHERE fund_code=?",
+            (code,),
+        )
+        reserve_balance = float(state["reserve_balance"].iloc[0]) if len(state) > 0 else 0.0
+
+        # 策略计算
+        try:
+            plan_result = calc_dca(cfg, reserve_balance, dev_pct)
+        except Exception as e:
+            results.append({
+                "fund_code": code, "error": f"策略计算失败: {e}",
+                "risk_guard_passed": False,
+            })
+            continue
+
+        # risk_guard
+        risk = advice_allowed(
+            nav=nav_val, proxy_close=proxy_close, ma200=proxy_ma200,
+            dev_pct=dev_pct, source=idx_src, plan=plan_result,
+            weekly_budget=cfg.get("weekly_budget", 200.0),
+        )
+        is_trusted = idx_src.lower() != "mock"
+
+        entry = {
+            "fund_code": code,
+            "fund_nav": nav_val,
+            "fund_nav_date": nav_date,
+            "proxy_code": proxy_code,
+            "proxy_close": proxy_close,
+            "proxy_ma200": proxy_ma200,
+            "proxy_date": idx_date,
+            "dev_pct": dev_pct,
+            "data_source": idx_src,
+            "is_trusted": is_trusted,
+            "risk_guard_passed": risk.passed,
+            "risk_guard_errors": risk.errors,
+            "fixed_amount": plan_result.fixed_amount,
+            "dynamic_amount": plan_result.dynamic_amount,
+            "reserve_before": plan_result.reserve_before,
+            "reserve_after": plan_result.reserve_after,
+        }
+        results.append(entry)
+
+    return results
+
+
+def _dry_run_live() -> list:
+    """Live dry-run：调用 sample_and_store_one（可能触发网络请求）。"""
+    funds, _ = load_all_funds_config()
+    if not funds:
+        return []
+
+    results = []
+    for cfg in funds:
+        code = cfg.get("fund_code", "?")
+        proxy_code = cfg.get("proxy_index", "?")
+        try:
+            r = sample_and_store_one(cfg)
+        except Exception as exc:
+            results.append({
+                "fund_code": code,
+                "error": str(exc),
+                "risk_guard_passed": False,
+            })
+            continue
+
+        nav_val = r.get("nav")
+        nav_date = r.get("dev", {}).get("date", "?")
+        idx_src = r.get("idx_src", "?")
+        dev = r.get("dev", {})
+        plan = r.get("plan", {})
+        rg = r.get("risk_guard", {})
+        is_trusted = (idx_src or "").lower() != "mock"
+
+        results.append({
+            "fund_code": code,
+            "fund_nav": nav_val,
+            "fund_nav_date": nav_date,
+            "proxy_code": proxy_code,
+            "proxy_close": dev.get("current_price"),
+            "proxy_ma200": dev.get("ma200"),
+            "dev_pct": dev.get("deviation_pct"),
+            "data_source": idx_src,
+            "is_trusted": is_trusted,
+            "risk_guard_passed": rg.get("passed", False),
+            "risk_guard_errors": rg.get("errors", []),
+            "fixed_amount": plan.get("fixed_amount"),
+            "dynamic_amount": plan.get("dynamic_amount"),
+            "reserve_before": plan.get("reserve_before"),
+            "reserve_after": plan.get("reserve_after"),
+        })
+
+    return results
+
+
+if __name__ == "__main__":
+    import sys
+    import argparse
+
+    parser = argparse.ArgumentParser(description="CompoundInterestPlan 实盘辅助")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="只读取/计算，不写入数据库"
+    )
+    parser.add_argument(
+        "--offline", action="store_true",
+        help="（配合 --dry-run）只从数据库读取，不做网络请求"
+    )
+    parser.add_argument(
+        "--format", choices=["json", "table"], default="json",
+        help="输出格式 (default: json)"
+    )
+    args = parser.parse_args()
+
+    if args.dry_run:
+        dry_run_all(output_format=args.format, offline=args.offline)
+    else:
+        print("用法: python -m src.app.services.actions --dry-run [--offline] [--format json|table]")
+        print("      只计算不写入。不加 --dry-run 不执行任何操作。")

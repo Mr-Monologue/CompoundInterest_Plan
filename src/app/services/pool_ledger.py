@@ -124,8 +124,13 @@ class PoolLedger:
         if target is None:
             raise ValueError(f"未找到可退款的 BUY 交易: id={entry_id}")
 
-        if target.balance_after == Decimal("0"):
-            raise ValueError(f"交易 id={entry_id} 已退款")
+        # 检查是否已退款：查找是否已有 REFUND 关联此交易
+        already_refunded = any(
+            rf.related_tx_id == entry_id and rf.entry_type == "REFUND"
+            for rf in self.entries
+        )
+        if already_refunded:
+            raise ValueError(f"交易 id={entry_id} 已退款，不可重复退款")
 
         self.balance += target.amount
         entry = PoolEntry(

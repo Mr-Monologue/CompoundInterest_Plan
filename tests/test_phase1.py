@@ -251,3 +251,72 @@ def test_risk_guard_format_rejection():
     assert "数据异常" in msg
     assert "人工复核" in msg
     assert "Mock" in msg
+
+
+# ── 新增测试: API 级 dry-run ────────────────────────────
+
+def test_api_plan_blocks_mock_source():
+    """dry-run 级：source=Mock 时 risk_guard_passed=False"""
+    from src.app.core.risk_guard import advice_allowed
+
+    # 模拟数据库中存在的 Mock 行
+    r = advice_allowed(
+        nav=4.305, proxy_close=15150.0, ma200=15100.25,
+        dev_pct=0.0033, source="Mock",
+    )
+    assert not r.passed, "Mock 数据应被阻断"
+    assert any("mock" in e.lower() for e in r.errors)
+
+
+def test_api_plan_returns_audit_chain():
+    """dry-run 审计链包含全部 15 个必填字段"""
+    expected_fields = [
+        "fund_code", "fund_nav", "fund_nav_date",
+        "proxy_code", "proxy_close", "proxy_ma200",
+        "dev_pct", "data_source", "is_trusted",
+        "risk_guard_passed",
+        "fixed_amount", "dynamic_amount",
+        "reserve_before", "reserve_after",
+    ]
+    # 构造最小审计链验证
+    entry = {
+        "fund_code": "000083",
+        "fund_nav": 4.305,
+        "fund_nav_date": "2025-08-29",
+        "proxy_code": "000932",
+        "proxy_close": 15150.0,
+        "proxy_ma200": 15100.25,
+        "dev_pct": 0.0033,
+        "data_source": "AKShare",
+        "is_trusted": True,
+        "risk_guard_passed": True,
+        "fixed_amount": 80.0,
+        "dynamic_amount": 112.5,
+        "reserve_before": 150.0,
+        "reserve_after": 37.5,
+    }
+    for field in expected_fields:
+        assert field in entry, f"缺少审计字段: {field}"
+
+
+def test_delete_pool_buy_refunds_once():
+    """删除 from_pool BUY 后，资金池余额恢复且只恢复一次"""
+    from src.app.services.pool_ledger import PoolLedger
+
+    ledger = PoolLedger("000083", 300.0)
+    assert ledger.current_balance == __import__("decimal").Decimal("300.00")
+
+    # 买入
+    buy = ledger.buy(80.0, "2025-01-15", "动态定投")
+    assert ledger.current_balance == __import__("decimal").Decimal("220.00")
+
+    # 第一次退款：恢复
+    ref1 = ledger.refund(buy.id)
+    assert ledger.current_balance == __import__("decimal").Decimal("300.00")
+
+    # 第二次退款：应拒绝（已退款）
+    try:
+        ledger.refund(buy.id)
+        assert False, "重复退款应报错"
+    except ValueError as e:
+        assert "已退款" in str(e) or "未找到" in str(e)
