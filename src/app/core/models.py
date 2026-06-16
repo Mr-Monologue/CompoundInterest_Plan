@@ -1,39 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-数据模型定义
+数据模型定义 — v2.0 实盘辅助统一入口
 
-所有实盘辅助相关的数据结构集中管理。
-- Asset: 基金/资产定义
-- Transaction: 交易记录
-- DailyPlan: 每日（每周）定投计划
-- PoolLedger: 资金池流水
-- FundState: 基金运行状态
-- NavSnapshot: 净值快照
-- MarketSnapshot: 市场数据快照
+新增字段（v2.0）：
+    - created_by:   "hermes" | "gui" | "scheduler" | "manual"
+    - idempotency_key: 防重复写入
+    - calculation_trace: 审计链（JSON）
+    - confirmed: Hermes 写入前需确认
 """
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 
 @dataclass
 class Asset:
     """基金/资产定义"""
-    fund_code: str                              # 基金代码，如 "000083"
-    fund_name: str                              # 基金名称
-    fund_name_en: str = ""                      # yfinance 代码，如 "000083.SZ"
-    proxy_code: Optional[str] = None            # 代理指数代码，如 "000932"
-    proxy_type: str = "INDEX"                   # 代理类型：INDEX
-    proxy_index_en: str = ""                    # 代理指数 yfinance 代码，如 "000932.SS"
-    weekly_budget: float = 200.0                # 周定投预算
+    fund_code: str
+    fund_name: str
+    fund_name_en: str = ""
+    proxy_code: Optional[str] = None
+    proxy_type: str = "INDEX"
+    proxy_index_en: str = ""
+    weekly_budget: float = 200.0
     manual_holdings: dict = field(default_factory=lambda: {
-        "enabled": True,
-        "units_left": 0.0,
-        "avg_cost": 0.0,
-        "realized_pnl": 0.0,
+        "enabled": True, "units_left": 0.0, "avg_cost": 0.0, "realized_pnl": 0.0,
     })
 
 
@@ -42,43 +36,51 @@ class Transaction:
     """交易记录"""
     id: Optional[int] = None
     fund_code: str = ""
-    date: str = ""                              # YYYY-MM-DD
-    tx_type: str = "BUY"                        # BUY / SELL
-    amount: float = 0.0                         # 交易金额（元）
-    units: float = 0.0                          # 份额
-    nav: float = 0.0                            # 成交净值
-    from_pool: bool = False                     # 是否从资金池出金
+    date: str = ""
+    tx_type: str = "BUY"
+    amount: float = 0.0
+    units: float = 0.0
+    nav: float = 0.0
+    from_pool: bool = False
     note: str = ""
+    created_by: str = "manual"                  # hermes | gui | scheduler | manual
+    idempotency_key: Optional[str] = None       # tx:{code}:{date}:{type}:{amount}:{hash}
+    confirmed: bool = False                     # Hermes 写入前必须确认
 
 
 @dataclass
 class DailyPlan:
     """每日/每周定投计划"""
     fund_code: str = ""
-    date: str = ""                              # YYYY-MM-DD
-    level: str = "mid"                          # low / mid / high
-    dev_pct: float = 0.0                        # MA200 偏离度 (proxy_close - proxy_ma200) / proxy_ma200
-    fixed_amount: float = 0.0                   # 固定定投金额
-    dynamic_amount: float = 0.0                 # 动态定投金额
-    total_amount: float = 0.0                   # 总定投金额
-    reserve_before: float = 0.0                 # 准备金（使用前）
-    reserve_after: float = 0.0                  # 准备金（使用后）
-    strategy_mode: str = "ma200_deviation"      # 策略模式
-    grid_pos: Optional[float] = None            # 网格位置（实验性，不用于生产）
-    risk_guard_passed: bool = True              # 风险防护是否通过
-    risk_guard_msg: str = ""                    # 风险防护消息
+    date: str = ""
+    level: str = "mid"
+    dev_pct: float = 0.0                        # MA200 偏离度
+    fixed_amount: float = 0.0
+    dynamic_amount: float = 0.0
+    total_amount: float = 0.0
+    reserve_before: float = 0.0
+    reserve_after: float = 0.0
+    strategy_mode: str = "ma200_deviation"
+    grid_pos: Optional[float] = None
+    risk_guard_passed: bool = True
+    risk_guard_msg: str = ""
+    created_by: str = "scheduler"               # hermes | gui | scheduler
+    idempotency_key: Optional[str] = None       # daily_sample:{code}:{date}
+    calculation_trace: Optional[Dict[str, Any]] = None  # 审计链
 
 
 @dataclass
-class PoolLedger:
+class PoolLedgerEntry:
     """资金池流水"""
     id: Optional[int] = None
-    date: str = ""                              # YYYY-MM-DD
+    date: str = ""
     fund_code: str = ""
-    ledger_type: str = "DEPOSIT"                # DEPOSIT / BUY / REFUND / ADJUST
+    entry_type: str = "DEPOSIT"
     amount: float = 0.0
     related_tx_id: Optional[int] = None
     note: str = ""
+    created_by: str = "manual"
+    idempotency_key: Optional[str] = None
 
 
 @dataclass
@@ -100,6 +102,7 @@ class NavSnapshot:
     source: str = ""
     is_trusted: bool = True
     data_date: Optional[str] = None
+    created_by: str = "scheduler"
 
 
 @dataclass
@@ -109,7 +112,35 @@ class MarketSnapshot:
     date: str = ""
     proxy_close: float = 0.0
     ma200: float = 0.0
-    dev_pct: float = 0.0                # (proxy_close - ma200) / ma200
+    dev_pct: float = 0.0
     source: str = ""
     is_trusted: bool = True
     data_date: Optional[str] = None
+    created_by: str = "scheduler"
+
+
+# ── idempotency_key 生成 ───────────────────────────
+
+def make_sample_idempotency_key(fund_code: str, date_str: str) -> str:
+    """每日采样幂等键"""
+    return f"daily_sample:{fund_code}:{date_str}"
+
+
+def make_tx_idempotency_key(
+    fund_code: str, date_str: str, tx_type: str, amount: float, ref: str = ""
+) -> str:
+    """交易录入幂等键"""
+    import hashlib
+    raw = f"{fund_code}:{date_str}:{tx_type}:{amount:.2f}:{ref}"
+    h = hashlib.md5(raw.encode()).hexdigest()[:8]
+    return f"tx:{fund_code}:{date_str}:{tx_type}:{amount:.2f}:{h}"
+
+
+def make_pool_idempotency_key(
+    fund_code: str, date_str: str, entry_type: str, amount: float
+) -> str:
+    """资金池流水幂等键"""
+    import hashlib
+    raw = f"pool:{fund_code}:{date_str}:{entry_type}:{amount:.2f}"
+    h = hashlib.md5(raw.encode()).hexdigest()[:8]
+    return f"pool:{fund_code}:{date_str}:{entry_type}:{amount:.2f}:{h}"
