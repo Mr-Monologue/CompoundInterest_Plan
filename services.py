@@ -25,7 +25,7 @@ from sqlmodel import Session, select, delete
 from models import (
     Asset, Transaction, FundState, DailyPlan, PlanState,
     Stock, FundHolding, IndustryLimit,
-    get_global_state,
+    get_global_state, classify_dev_pct,
 )
 
 logger = logging.getLogger("smartinvest.services")
@@ -379,27 +379,45 @@ def run_strategy_analysis(code: str, session: Session):
     session.add(fund_state)
 
     today_str = date.today().isoformat()
+    # REAL MA200 deviation (not grid_pos)
+    real_dev_pct = (mdata["current_price"] - mdata["ma200"]) / mdata["ma200"] if mdata["ma200"] > 0 else 0
+    level = classify_dev_pct(real_dev_pct)
+
     existing = session.exec(
         select(DailyPlan).where(DailyPlan.asset_code == code, DailyPlan.date == today_str)
     ).first()
     if existing:
-        session.delete(existing)
-
-    plan = DailyPlan(
-        asset_code=code, date=today_str,
-        close=mdata["current_price"], ma200=mdata["ma200"],
-        dev_pct=grid_pos, level=level,
-        base_amt=WEEKLY_BUDGET,
-        dyn_amt=from_res if from_res > 0 else -to_res,
-        total_amt=invest,
-        reserve_before=reserve_before,
-        reserve_after=reserve_after,
-    )
-    session.add(plan)
+        # Update — never DELETE history
+        existing.close = mdata["current_price"]
+        existing.ma200 = mdata["ma200"]
+        existing.dev_pct = real_dev_pct
+        existing.grid_pos = grid_pos
+        existing.level = level
+        existing.base_amt = WEEKLY_BUDGET
+        existing.dyn_amt = from_res if from_res > 0 else -to_res
+        existing.total_amt = invest
+        existing.reserve_before = reserve_before
+        existing.reserve_after = reserve_after
+        existing.created_by = "scheduler"
+        session.add(existing)
+    else:
+        plan = DailyPlan(
+            asset_code=code, date=today_str,
+            close=mdata["current_price"], ma200=mdata["ma200"],
+            dev_pct=real_dev_pct, grid_pos=grid_pos, level=level,
+            base_amt=WEEKLY_BUDGET,
+            dyn_amt=from_res if from_res > 0 else -to_res,
+            total_amt=invest,
+            reserve_before=reserve_before,
+            reserve_after=reserve_after,
+            created_by="scheduler",
+        )
+        session.add(plan)
     session.commit()
 
     return {
         "date": today_str, "level": level, "grid_pos": f"{grid_pos:.1f}",
+        "dev_pct": round(real_dev_pct * 100, 2),
         "advice": f"建议买入 ¥{invest:.0f}", "details": reason,
         "pool_before": reserve_before, "pool_after": reserve_after,
     }
@@ -679,3 +697,53 @@ def get_fund_industry_vector(session: Session, fund_code: str):
         ind = stock.industry if stock else "未分类"
         vector[ind] += h.weight
     return dict(vector)
+
+
+# ── Auto-detect fund ────────────────────────────────
+
+_PROXY_KEYWORDS = {
+    "消费": "000932", "食品": "000932", "白酒": "399997", "饮料": "000932",
+    "医药": "000991", "医疗": "000991",
+    "科技": "399006", "信息": "399006", "电子": "399006",
+    "金融": "000016", "银行": "000016", "证券": "399975",
+    "新能源": "000941", "军工": "399967",
+    "文体": "000300", "价值": "000300", "混合": "000300",
+}
+DEFAULT_PROXY = "000300"
+
+
+def auto_detect_fund(code: str) -> dict:
+    """Auto-detect fund name + proxy from fund code via Eastmoney API."""
+    import requests as _r
+    result = {"fund_code": code, "fund_name": f"基金{code}", "proxy": DEFAULT_PROXY}
+    try:
+        url = f"https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key={code}"
+        res = _r.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        data = res.json()
+        if data.get("Datas"):
+            name = data["Datas"][0].get("NAME", "")
+            result["fund_name"] = name
+            result["fund_code"] = data["Datas"][0].get("CODE", code)
+            for kw, proxy in _PROXY_KEYWORDS.items():
+                if kw in name:
+                    result["proxy"] = proxy
+                    break
+    except Exception:
+        pass
+    return result
+
+
+# ── Risk guard ──────────────────────────────────────
+
+def risk_guard(nav=None, proxy_close=None, ma200=None, dev_pct=None, source=""):
+    """Validate data before issuing recommendations. Returns (passed, errors)."""
+    errors = []
+    if source and source.lower() == "mock":
+        errors.append("Mock data — untrusted")
+    if nav is not None and (nav <= 0 or nav > 20):
+        errors.append(f"NAV anomaly: {nav}")
+    if ma200 is not None and ma200 <= 0:
+        errors.append(f"MA200 anomaly: {ma200}")
+    if dev_pct is not None and abs(dev_pct) > 0.5:
+        errors.append(f"dev_pct anomaly: {dev_pct*100:.2f}%")
+    return len(errors) == 0, errors

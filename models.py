@@ -49,13 +49,16 @@ class DailyPlan(SQLModel, table=True):
     date: str = Field(index=True)
     close: float
     ma200: float
-    dev_pct: float
-    level: str
+    dev_pct: float       # REAL MA200 deviation: (close - ma200) / ma200
+    grid_pos: float = 0.0  # Grid position for grid strategy (experimental)
+    level: str            # low / mid / high — computed by classify_dev_pct(dev_pct)
     base_amt: float
     dyn_amt: float
     total_amt: float
     reserve_before: float
     reserve_after: float
+    created_by: str = "scheduler"
+    idempotency_key: Optional[str] = Field(default=None, unique=True)
 
 
 class PlanState(SQLModel, table=True):
@@ -104,26 +107,17 @@ def create_db_and_tables():
         inspector = inspect(engine)
         tables = inspector.get_table_names()
 
-        if "transaction" in tables:
-            cols = [c["name"] for c in inspector.get_columns("transaction")]
-            if "fee" not in cols:
-                with engine.connect() as conn:
-                    conn.execute(text('DROP TABLE IF EXISTS "transaction"'))
-                    conn.commit()
-
-        if "planstate" in tables:
-            cols = [c["name"] for c in inspector.get_columns("planstate")]
-            if "pool_balance" not in cols or "base_investment" not in cols:
-                with engine.connect() as conn:
-                    conn.execute(text('DROP TABLE IF EXISTS "planstate"'))
-                    conn.commit()
-
-        if "asset" in tables:
-            cols = [c["name"] for c in inspector.get_columns("asset")]
-            if "max_weight_limit" not in cols:
-                with engine.connect() as conn:
-                    conn.execute(text("DROP TABLE IF EXISTS asset"))
-                    conn.commit()
+        # Add missing columns — never DROP TABLE
+        if "dailyplan" in tables:
+            cols = [c["name"] for c in inspector.get_columns("dailyplan")]
+            with engine.connect() as conn:
+                if "grid_pos" not in cols:
+                    conn.execute(text('ALTER TABLE dailyplan ADD COLUMN grid_pos FLOAT DEFAULT 0.0'))
+                if "created_by" not in cols:
+                    conn.execute(text("ALTER TABLE dailyplan ADD COLUMN created_by TEXT DEFAULT 'scheduler'"))
+                if "idempotency_key" not in cols:
+                    conn.execute(text("ALTER TABLE dailyplan ADD COLUMN idempotency_key TEXT"))
+                conn.commit()
 
     SQLModel.metadata.create_all(engine)
 
@@ -141,3 +135,18 @@ def get_global_state(session: Session) -> PlanState:
         session.commit()
         session.refresh(state)
     return state
+
+
+# ── Strategy utility: canonical dev_pct → level ──────
+
+def classify_dev_pct(dev_pct: float) -> str:
+    """Canonical MA200 deviation → level. Single source of truth.
+    low: ≤ -10% | mid: -10%~+5% | high: > +5%
+    dev_pct=0.0033 (0.33%) → mid, NOT low.
+    """
+    if dev_pct <= -0.10:
+        return "low"
+    elif dev_pct <= 0.05:
+        return "mid"
+    else:
+        return "high"

@@ -195,10 +195,29 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)):
 
 # --- 行情与策略 ---
 
+@app.get("/api/fund/detect/{code}")
+def detect_fund(code: str):
+    """Auto-detect fund name + proxy index from fund code."""
+    from services import auto_detect_fund
+    return auto_detect_fund(code)
+
+
 @app.get("/api/advice/{code}")
 def get_advice(code: str, session: Session = Depends(get_session)):
-    from services import get_instant_analysis
-    return get_instant_analysis(code, session)
+    from services import get_instant_analysis, risk_guard
+    result = get_instant_analysis(code, session)
+    if result.get("action") == "ERROR":
+        return result
+    # Add risk_guard + action_allowed
+    passed, errors = risk_guard(
+        nav=result.get("current_price"),
+        ma200=result.get("ma200"),
+    )
+    result["action_allowed"] = passed and result.get("action") != "ERROR"
+    result["recommended_amount"] = result.get("suggested_amount") if passed else None
+    result["computed_amount"] = result.get("suggested_amount")
+    result["risk_guard_errors"] = errors
+    return result
 
 
 @app.post("/api/strategy/run/{code}")
