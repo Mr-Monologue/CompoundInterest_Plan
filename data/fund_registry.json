@@ -1,0 +1,44 @@
+{
+  "000083": {
+    "fund_name": "汇添富消费行业混合",
+    "fund_name_en": "000083.SZ",
+    "proxy_index": "000932",
+    "proxy_index_en": "000932.SS",
+    "category": "消费"
+  },
+  "003096": {
+    "fund_name": "中欧医疗健康混合C",
+    "fund_name_en": "003096.SZ",
+    "proxy_index": "000991",
+    "proxy_index_en": "000991.SS",
+    "category": "医药"
+  },
+  "110011": {
+    "fund_name": "易方达中小盘混合",
+    "fund_name_en": "110011.SZ",
+    "proxy_index": "000300",
+    "proxy_index_en": "000300.SS",
+    "category": "混合"
+  },
+  "161725": {
+    "fund_name": "招商中证白酒",
+    "fund_name_en": "161725.SZ",
+    "proxy_index": "399997",
+    "proxy_index_en": "399997.SZ",
+    "category": "白酒"
+  },
+  "005827": {
+    "fund_name": "易方达蓝筹精选混合",
+    "fund_name_en": "005827.SZ",
+    "proxy_index": "000300",
+    "proxy_index_en": "000300.SS",
+    "category": "混合"
+  },
+  "001632": {
+    "fund_name": "天弘中证食品饮料",
+    "fund_name_en": "001632.SZ",
+    "proxy_index": "000932",
+    "proxy_index_en": "000932.SS",
+    "category": "消费"
+  }
+}

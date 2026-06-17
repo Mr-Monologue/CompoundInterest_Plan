@@ -43,19 +43,26 @@ selected = st.sidebar.selectbox(
 
 with st.sidebar.expander("➕ 添加基金", expanded=False):
     with st.form("add_fund"):
-        fc = st.text_input("基金代码", placeholder="000083")
-        fn = st.text_input("基金名称", placeholder="汇添富消费行业混合")
-        fe = st.text_input("yfinance代码", placeholder="000083.SZ")
-        pi = st.text_input("代理指数", placeholder="000932")
-        pie = st.text_input("代理指数_en", placeholder="000932.SS")
+        fc = st.text_input("基金代码", placeholder="如 000083")
         wb = st.number_input("每周预算", min_value=0.0, value=200.0, step=50.0)
         if st.form_submit_button("保存到配置"):
-            add_fund_to_config({
-                "fund_code": fc, "fund_name": fn, "fund_name_en": fe,
-                "proxy_index": pi, "proxy_index_en": pie, "weekly_budget": wb,
-                "manual_holdings": {"enabled": True, "units_left": 0.0, "avg_cost": 0.0, "realized_pnl": 0.0},
-            })
-            st.success("已添加")
+            # Auto-lookup from fund registry
+            import json
+            reg = json.load(open("data/fund_registry.json", encoding="utf-8"))
+            if fc in reg:
+                info = reg[fc]
+                add_fund_to_config({
+                    "fund_code": fc,
+                    "fund_name": info["fund_name"],
+                    "fund_name_en": info.get("fund_name_en", f"{fc}.SZ"),
+                    "proxy_index": info.get("proxy_index", ""),
+                    "proxy_index_en": info.get("proxy_index_en", ""),
+                    "weekly_budget": wb,
+                    "manual_holdings": {"enabled": True, "units_left": 0.0, "avg_cost": 0.0, "realized_pnl": 0.0},
+                })
+                st.success(f"已添加 {fc} {info['fund_name']}")
+            else:
+                st.error(f"基金 {fc} 未在注册表中。请联系维护或手动编辑 data/config.json。")
             st.rerun()
 
 if selected != "(全部)":
