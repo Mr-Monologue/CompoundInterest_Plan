@@ -22,3 +22,8 @@ data/*.bak_*
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime state (not to be committed)
+hermes/runtime/.scheduler_state.json
+hermes/runtime/.process_state.json
+logs/

@@ -1,0 +1,100 @@
+# Natural Language → Action intent map for Hermes Desktop Operator
+# Hermes matches user input against examples to determine the action.
+
+intents:
+  open_system:
+    examples:
+      - 打开复利投资系统
+      - 启动投资系统
+      - 打开定投系统
+      - 开始今天的复利计划
+      - 启动复利系统
+      - start cip
+      - open compound interest system
+    action: open_system
+    description: "启动 API + Scheduler + GUI，返回系统状态"
+
+  open_gui:
+    examples:
+      - 打开 GUI
+      - 打开界面
+      - 打开看板
+      - 打开控制台
+      - 打开投资看板
+      - 打开定投界面
+    action: open_gui
+    description: "只打开 GUI 浏览器界面"
+
+  today_status:
+    examples:
+      - 今天状态怎么样
+      - 看一下今天有没有异常
+      - 今天能不能买
+      - 今日复利计划状态
+      - 今天采样了吗
+      - 今日投资状态
+      - 有无异常
+    action: today_status
+    description: "读取最新 snapshot/plan，返回 PASS/BLOCKED"
+
+  run_daily_sample:
+    examples:
+      - 跑一下每日采样
+      - 手动采样
+      - 立即采样
+      - 拉取最新数据
+    action: run_daily_sample
+    description: "手动触发每日采样"
+
+  run_weekly_review:
+    examples:
+      - 生成周报
+      - 做本周复盘
+      - 本周投资复盘
+      - 本周总结
+      - 周报
+    action: run_weekly_review
+    description: "生成周度复盘报告"
+
+  open_daily_report:
+    examples:
+      - 打开日报
+      - 打开今天报告
+      - 查看今天采样结果
+    action: open_daily_report
+    description: "打开最新日报"
+
+  open_weekly_report:
+    examples:
+      - 打开周报
+      - 查看周报
+      - 上周报
+    action: open_weekly_report
+    description: "打开最新周报"
+
+  open_alerts:
+    examples:
+      - 打开异常报告
+      - 看告警
+      - 今天有没有 BLOCKED
+      - 查看告警
+      - 异常报告
+    action: open_alerts
+    description: "打开 alerts 目录"
+
+  backup_db:
+    examples:
+      - 备份数据库
+      - 先备份一下
+      - 备份一下数据
+    action: backup_db
+    description: "通过 API 安全备份数据库"
+
+  stop_system:
+    examples:
+      - 停止复利投资系统
+      - 关闭系统
+      - 停掉系统
+      - 退出
+    action: stop_system
+    description: "停止所有由 Hermes 管理的进程"
