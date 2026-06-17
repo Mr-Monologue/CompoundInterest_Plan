@@ -185,15 +185,23 @@ with tabs[2]:
         f = code_to_cfg[code]
 
         st.subheader("手动持仓（保存到配置）")
+        # Auto-calculate realized PnL from SELL transactions
+        from src.app.db.storage import query_df
+        tx_df = query_df(
+            "SELECT tx_type, SUM(amount) as total FROM transactions_v2 WHERE fund_code=? AND tx_type='SELL' GROUP BY tx_type",
+            (code,),
+        )
+        realized_auto = float(tx_df["total"].iloc[0]) if len(tx_df) > 0 else float(f["manual_holdings"].get("realized_pnl", 0))
+        
         with st.form("holdings_form"):
             units = st.number_input("剩余份额", value=float(f["manual_holdings"]["units_left"]), step=0.01)
             avg = st.number_input("平均成本", value=float(f["manual_holdings"]["avg_cost"]), step=0.0001, format="%.4f")
-            realized = st.number_input("已实现盈亏", value=float(f["manual_holdings"]["realized_pnl"]), step=0.01)
+            st.metric("已实现盈亏（自动计算）", f"¥{realized_auto:,.2f}")
             if st.form_submit_button("保存"):
                 f["manual_holdings"]["enabled"] = True
                 f["manual_holdings"]["units_left"] = units
                 f["manual_holdings"]["avg_cost"] = avg
-                f["manual_holdings"]["realized_pnl"] = realized
+                f["manual_holdings"]["realized_pnl"] = realized_auto
                 _, cfg = load_all_funds_config()
                 for i, ff in enumerate(cfg["funds"]):
                     if ff["fund_code"] == code: cfg["funds"][i] = f; break
