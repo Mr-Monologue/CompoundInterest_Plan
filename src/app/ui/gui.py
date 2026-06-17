@@ -18,7 +18,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 from src.app.core.config import load_all_funds_config, save_config
-from src.app.db.storage import init_db
+from src.app.db.storage import init_db, query_df
 from src.app.core.risk_guard import advice_allowed, format_rejection_message
 from src.app.services.api_service import (
     api_get_latest, api_get_plan, api_daily_sample,
@@ -184,19 +184,37 @@ with tabs[2]:
         code = selected
         f = code_to_cfg[code]
 
-        st.subheader("手动持仓（保存到配置）")
+        st.subheader("📊 持仓概览")
         # Auto-calculate realized PnL from SELL transactions
-        from src.app.db.storage import query_df
-        tx_df = query_df(
-            "SELECT tx_type, SUM(amount) as total FROM transactions_v2 WHERE fund_code=? AND tx_type='SELL' GROUP BY tx_type",
-            (code,),
-        )
-        realized_auto = float(tx_df["total"].iloc[0]) if len(tx_df) > 0 else float(f["manual_holdings"].get("realized_pnl", 0))
-        
+        realized_auto = float(f["manual_holdings"].get("realized_pnl", 0))
+        try:
+            tx_df = query_df(
+                "SELECT SUM(amount) as total FROM transactions_v2 WHERE fund_code=? AND tx_type='SELL'",
+                (code,),
+            )
+            if len(tx_df) > 0 and tx_df["total"].iloc[0] is not None:
+                realized_auto = float(tx_df["total"].iloc[0])
+        except Exception:
+            pass
+
+        # Calculate unrealized PnL from latest NAV
+        data = api_get_latest(code)
+        current_nav = data.get("nav", 0)
+        units_val = float(f["manual_holdings"]["units_left"])
+        avg_val = float(f["manual_holdings"]["avg_cost"])
+        market_value = units_val * (current_nav or 0)
+        cost_basis = units_val * avg_val
+        unrealized = market_value - cost_basis
+        unrealized_pct = (unrealized / cost_basis * 100) if cost_basis > 0 else 0
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("持仓市值", f"¥{market_value:,.2f}" if current_nav else "需采样", delta=f"净值 {current_nav:.4f}" if current_nav else None)
+        c2.metric("未实现盈亏", f"¥{unrealized:+,.2f}", delta=f"{unrealized_pct:+.2f}%")
+        c3.metric("已实现盈亏", f"¥{realized_auto:+,.2f}")
+
         with st.form("holdings_form"):
-            units = st.number_input("剩余份额", value=float(f["manual_holdings"]["units_left"]), step=0.01)
-            avg = st.number_input("平均成本", value=float(f["manual_holdings"]["avg_cost"]), step=0.0001, format="%.4f")
-            st.metric("已实现盈亏（自动计算）", f"¥{realized_auto:,.2f}")
+            units = st.number_input("剩余份额", value=units_val, step=0.01)
+            avg = st.number_input("平均成本", value=avg_val, step=0.0001, format="%.4f")
             if st.form_submit_button("保存"):
                 f["manual_holdings"]["enabled"] = True
                 f["manual_holdings"]["units_left"] = units
