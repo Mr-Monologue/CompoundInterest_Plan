@@ -1,0 +1,77 @@
+# CompoundInterestPlan — Hermes Scheduler Configuration
+#
+# All jobs run through the Tool Registry and FastAPI.
+# No job creates transactions automatically.
+# transaction_allowed: false on all automated jobs.
+
+timezone: Asia/Shanghai
+
+jobs:
+
+  daily_sample:
+    schedule: "every day 18:00"
+    tool: daily_sample
+    mode: automatic
+    transaction_allowed: false
+    max_retries: 2
+    retry_delay_seconds: 30
+    timeout_seconds: 120
+    on_success: daily_summary
+    on_failure: anomaly_alert
+    notes: >
+      Idempotent: same fund+date re-calls return existing records.
+      If action_allowed=false, writes BLOCKED alert.
+      Does NOT create transactions.
+
+  anomaly_watch:
+    schedule: "every day 18:10"
+    tool: anomaly_watch
+    mode: automatic
+    transaction_allowed: false
+    max_retries: 1
+    timeout_seconds: 60
+    on_success: write_alert_if_needed
+    on_failure: api_error_alert
+    notes: >
+      Checks for Mock source, stale data, nav/ma200 anomalies.
+      Only writes alerts. Never fixes data.
+
+  weekly_review:
+    schedule: "every Friday 18:20"
+    tool: weekly_review
+    mode: automatic
+    transaction_allowed: false
+    max_retries: 1
+    timeout_seconds: 60
+    on_success: weekly_summary
+    on_failure: weekly_error_alert
+    notes: >
+      Must not promise returns.
+      Must not predict market movements.
+      Must not output buy amounts when risk_guard fails.
+
+  backup_db:
+    schedule: "every Friday 18:00"
+    tool: backup_db
+    mode: automatic
+    transaction_allowed: false
+    max_retries: 1
+    timeout_seconds: 30
+    on_success: log_backup_path
+    on_failure: backup_error_alert
+    notes: >
+      Uses sqlite3 backup API. Does not modify business data.
+
+  transaction_confirm:
+    schedule: manual
+    tool: confirm_transaction
+    mode: human_confirm
+    transaction_allowed: true
+    max_retries: 0
+    timeout_seconds: 0
+    on_success: record_transaction
+    on_failure: reject_with_reason
+    notes: >
+      MANUAL ONLY. Requires user confirmation.
+      Forbidden under: risk_guard_fail, Mock source, recommended_amount=null.
+      Only created_by=gui.

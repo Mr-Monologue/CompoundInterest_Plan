@@ -1,0 +1,312 @@
+# Hermes Agent Tool Registry — CompoundInterestPlan
+# 
+# All tools map to FastAPI endpoints through the unified api_service layer.
+# Hermes never writes SQLite directly.
+
+tools:
+
+  - name: health_check
+    description: "Check API availability. Returns version and debug status."
+    method: GET
+    endpoint: /api/health
+    requires_token: false
+    writes_db: false
+    requires_human_confirmation: false
+    transaction_related: false
+    allowed_created_by: []
+    forbidden_when: []
+    input_contract:
+      parameters: []
+    output_contract:
+      status: "ok"
+      version: "2.1"
+      debug: false
+    success_criteria:
+      - status == "ok"
+    failure_handling:
+      - "Log API_ERROR alert"
+      - "Retry up to 3 times with 5s backoff"
+      - "Notify user to start API: python -m src.app.api --port 8701"
+
+  - name: daily_sample
+    description: >
+      Run daily NAV + proxy index sampling for all configured funds.
+      Computes MA200 deviation, risk_guard pass/fail, and recommended_amount.
+      Idempotent: same fund+date re-calls return existing record.
+      Does NOT create transactions.
+    method: POST
+    endpoint: /api/snapshot/daily/run
+    requires_token: true
+    writes_db: true
+    requires_human_confirmation: false
+    transaction_related: false
+    allowed_created_by: [scheduler, hermes, manual]
+    forbidden_when: []
+    input_contract:
+      created_by: "scheduler"
+      force: false
+    output_contract:
+      fund_code: "000083"
+      status: "created"
+      action_allowed: true
+      recommended_amount: 192.50
+      dev_pct: 0.0033
+      data_source: "AKShare"
+      is_trusted: true
+      risk_guard_passed: true
+      calculation_trace:
+        computed_amount: 192.50
+        fixed_amount: 80.00
+        dynamic_amount: 112.50
+        reserve_before: 150.00
+        reserve_after: 37.50
+    success_criteria:
+      - status in ["created", "idempotent"]
+      - action_allowed is present
+    failure_handling:
+      - "If action_allowed=false: output BLOCKED, write alerts/XX_BLOCKED.md"
+      - "If API returns error: write alerts/API_ERROR_XX.md"
+      - "Never output buy amount when BLOCKED"
+
+  - name: latest_snapshot
+    description: "Read latest NAV, proxy, and dev_pct snapshot for a given fund."
+    method: GET
+    endpoint: /api/snapshot/latest
+    requires_token: false
+    writes_db: false
+    requires_human_confirmation: false
+    transaction_related: false
+    allowed_created_by: []
+    forbidden_when: []
+    input_contract:
+      fund_code: "000083"
+    output_contract:
+      fund_code: "000083"
+      nav: 5.1280
+      nav_date: "2025-08-29"
+      nav_source: "AKShare_000083"
+      proxy_close: 15150.0
+      proxy_ma200: 15100.25
+      dev_pct: 0.0033
+    success_criteria:
+      - nav is not null
+    failure_handling:
+      - "Return empty object with error field"
+      - "Do NOT fabricate data"
+
+  - name: latest_plan
+    description: "Read latest DCA plan for a given fund. Includes action_allowed and recommended_amount."
+    method: GET
+    endpoint: /api/plan/latest
+    requires_token: false
+    writes_db: false
+    requires_human_confirmation: false
+    transaction_related: false
+    allowed_created_by: []
+    forbidden_when: []
+    input_contract:
+      fund_code: "000083"
+    output_contract:
+      fund_code: "000083"
+      date: "2025-08-29"
+      level: "low"
+      dev_pct: 0.0033
+      action_allowed: true
+      recommended_amount: 192.50
+      calculation_trace:
+        fixed_amount: 80.00
+        dynamic_amount: 112.50
+        computed_amount: 192.50
+        reserve_before: 150.00
+        reserve_after: 37.50
+    success_criteria:
+      - action_allowed is present
+      - recommended_amount is null when BLOCKED
+    failure_handling:
+      - "If action_allowed=false: only display BLOCKED, never output buy amount"
+
+  - name: anomaly_watch
+    description: >
+      Run anomaly detection. Checks for: Mock source, untrusted data,
+      risk_guard failure, nav anomalies, stale data.
+      Writes alerts only. Does NOT create transactions.
+    method: GET
+    endpoint: /api/plan/latest
+    requires_token: false
+    writes_db: false  # (reports/alerts are files, not DB)
+    requires_human_confirmation: false
+    transaction_related: false
+    allowed_created_by: []
+    forbidden_when: []
+    input_contract:
+      fund_code: "000083"
+    output_contract:
+      fund_code: "000083"
+      anomalies: []
+      summary: "No anomalies detected"
+    success_criteria:
+      - All checks executed
+      - Alerts written if anomalies found
+    failure_handling:
+      - "Write alerts/XX_ANOMALY.md"
+      - "Only alert, never fix, never create transactions"
+
+  - name: weekly_review
+    description: >
+      Generate weekly review report for all funds or a specific fund.
+      Includes narrative summary, total amounts, data quality checks.
+      Does NOT create transactions. Must not promise returns.
+    method: GET
+    endpoint: /api/reports/weekly
+    requires_token: false
+    writes_db: false
+    requires_human_confirmation: false
+    transaction_related: false
+    allowed_created_by: []
+    forbidden_when: []
+    input_contract:
+      fund_code: "000083"
+      days: 7
+    output_contract:
+      period_days: 7
+      fund_code: "000083"
+      narrative: "..."
+      total_amount: 560.00
+      record_count: 7
+    success_criteria:
+      - narrative contains no profit promises
+      - narrative contains no "must buy" language
+    failure_handling:
+      - "Write alerts/WEEKLY_ERROR_XX.md if API fails"
+      - "Never fabricate market data"
+
+  - name: backup_db
+    description: "Create a safe SQLite backup using backup API. Does NOT modify business data."
+    method: POST
+    endpoint: /api/admin/backup
+    requires_token: true
+    writes_db: false  # (writes backup file, not business tables)
+    requires_human_confirmation: false
+    transaction_related: false
+    allowed_created_by: [hermes, scheduler]
+    forbidden_when: []
+    input_contract:
+      parameters: []
+    output_contract:
+      status: "ok"
+      backup_path: "data/trend.db.backup_20250101_120000"
+      size_bytes: 155648
+    success_criteria:
+      - status == "ok"
+      - backup_path exists
+    failure_handling:
+      - "Write alerts/BACKUP_ERROR_XX.md"
+      - "Retry once after 60s"
+
+  - name: create_transaction_draft
+    description: >
+      Create a BUY/SELL transaction DRAFT. NOT a confirmed transaction.
+      Must have requires_human_confirmation=true in the tool definition.
+      Will be rejected if confirmed=true when created_by=hermes.
+    method: POST
+    endpoint: /api/transactions
+    requires_token: true
+    writes_db: true
+    requires_human_confirmation: true
+    transaction_related: true
+    allowed_created_by: [hermes, gui]
+    forbidden_when:
+      - risk_guard_fail
+      - action_allowed_false
+      - recommended_amount_null
+      - source_mock
+      - trusted_false
+      - confirmed_without_user_approval
+    input_contract:
+      fund_code: "000083"
+      date: "2025-01-01"
+      tx_type: "BUY"
+      amount: 80.00
+      from_pool: false
+      note: "Draft transaction"
+      created_by: "hermes"
+      confirmed: false
+    output_contract:
+      status: "created"
+      transaction_id: 1
+      idempotency_key: "tx:000083:2025-01-01:BUY:80.00:abcd1234"
+    success_criteria:
+      - status in ["created", "idempotent"]
+      - confirmed == false when created_by == "hermes"
+    failure_handling:
+      - "If forbidden_when triggered: reject with BLOCKED message"
+      - "Never silently create confirmed transactions"
+
+  - name: confirm_transaction
+    description: >
+      Confirm a previously drafted transaction. This is the REAL transaction tool.
+      Requires explicit user confirmation. Forbidden under any risk_guard failure.
+    method: POST  # (re-submit with confirmed=true after user approval)
+    endpoint: /api/transactions
+    requires_token: true
+    writes_db: true
+    requires_human_confirmation: true
+    transaction_related: true
+    allowed_created_by: [gui]
+    forbidden_when:
+      - risk_guard_fail
+      - action_allowed_false
+      - recommended_amount_null
+      - source_mock
+      - trusted_false
+      - user_not_confirmed
+      - created_by_hermes
+    input_contract:
+      fund_code: "000083"
+      date: "2025-01-01"
+      tx_type: "BUY"
+      amount: 80.00
+      from_pool: true
+      note: "Confirmed by user"
+      created_by: "gui"
+      confirmed: true
+    output_contract:
+      status: "created"
+      transaction_id: 2
+    success_criteria:
+      - confirmed == true
+      - created_by in ["gui"]
+      - risk_guard passed
+    failure_handling:
+      - "Reject with explicit BLOCKED reason"
+      - "Never confirm under forbidden_when conditions"
+
+  - name: pool_deposit
+    description: >
+      Record a deposit into the reserve pool.
+      Writes pool_ledger entry. Idempotent.
+      Recommended: requires_human_confirmation.
+    method: POST
+    endpoint: /api/pool/deposit
+    requires_token: true
+    writes_db: true
+    requires_human_confirmation: true
+    transaction_related: false
+    allowed_created_by: [gui, hermes]
+    forbidden_when: []
+    input_contract:
+      fund_code: "000083"
+      amount: 120.00
+      note: "Weekly reserve inflow"
+      created_by: "gui"
+    output_contract:
+      status: "deposited"
+      fund_code: "000083"
+      amount: 120.00
+      balance_after: 750.20
+    success_criteria:
+      - status in ["deposited", "idempotent"]
+      - balance_after correctly reflects new balance
+    failure_handling:
+      - "Reject on idempotency collision with different payload"
+      - "Write alerts/POOL_ERROR_XX.md on API failure"
