@@ -40,5 +40,19 @@
     "proxy_index": "000932",
     "proxy_index_en": "000932.SS",
     "category": "消费"
+  },
+  "001532": {
+    "fund_name": "华安文体健康混合",
+    "fund_name_en": "001532.SZ",
+    "proxy_index": "000300",
+    "proxy_index_en": "000300.SS",
+    "category": "混合"
+  },
+  "002340": {
+    "fund_name": "富国价值优势混合",
+    "fund_name_en": "002340.SZ",
+    "proxy_index": "000300",
+    "proxy_index_en": "000300.SS",
+    "category": "混合"
   }
 }
