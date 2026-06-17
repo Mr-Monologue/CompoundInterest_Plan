@@ -8,8 +8,22 @@ timezone: Asia/Shanghai
 
 jobs:
 
+  daily_startup_check:
+    schedule: on_startup
+    tool: latest_snapshot
+    mode: automatic
+    transaction_allowed: false
+    max_retries: 1
+    timeout_seconds: 30
+    on_success: log_status
+    on_failure: api_error_alert
+    notes: >
+      Runs immediately on watcher startup.
+      Checks if API is available and returns latest snapshot status.
+      Does NOT write DB.
+
   daily_sample:
-    schedule: "every day 18:00"
+    schedule: "every day 20:30"
     tool: daily_sample
     mode: automatic
     transaction_allowed: false
@@ -24,7 +38,7 @@ jobs:
       Does NOT create transactions.
 
   anomaly_watch:
-    schedule: "every day 18:10"
+    schedule: "every day 20:40"
     tool: anomaly_watch
     mode: automatic
     transaction_allowed: false
@@ -37,7 +51,7 @@ jobs:
       Only writes alerts. Never fixes data.
 
   weekly_review:
-    schedule: "every Friday 18:20"
+    schedule: "every Thursday 21:00"
     tool: weekly_review
     mode: automatic
     transaction_allowed: false
