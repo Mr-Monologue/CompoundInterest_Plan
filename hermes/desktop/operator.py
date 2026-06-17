@@ -160,7 +160,8 @@ def action_today_status() -> Dict[str, Any]:
                 f" | 估值: {result['level']}\n"
                 f"risk_guard: {result['risk_guard']} | action_allowed: true\n"
                 f"recommended_amount: ¥{rec:.2f}（仅供人工复核）\n\n"
-                f"说明：本结论基于今日代理指数收盘数据生成。\n"
+                f"说明：15:00 后生成的是基于今日代理指数收盘信号的复利计划结论；"
+                f"实际基金交易确认日以平台规则为准。\n"
                 f"基金当日 NAV 如未更新，仅影响持仓估值展示。\n"
                 f"真实交易仍需在 GUI 中人工确认。"
             )

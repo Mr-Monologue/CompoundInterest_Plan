@@ -51,7 +51,7 @@ jobs:
       Only writes alerts. Never fixes data.
 
   weekly_review:
-    schedule: "every Thursday 17:20"
+    schedule: "every Thursday 17:50"
     tool: weekly_review
     mode: automatic
     transaction_allowed: false

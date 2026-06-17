@@ -298,14 +298,17 @@ def api_get_plan(fund_code: str) -> Dict[str, Any]:
         "SELECT * FROM dca_plan_v2 WHERE fund_code=? ORDER BY date DESC LIMIT 1", (fund_code,)
     )
     if len(plan):
+        from ..core.strategy import classify_dev_pct
+        dev_pct_val = float(plan["dev_pct"].iloc[0])
+        # NEVER trust stored level — always recompute from dev_pct
+        level = classify_dev_pct(dev_pct_val)
         is_trusted = (result.get("proxy_source", "") or "").lower() != "mock"
-        level = str(plan["level"].iloc[0])
         action_allowed = is_trusted and level != "invalid"
         computed = float(plan["total_amt"].iloc[0])
         result.update({
             "date": str(plan["date"].iloc[0]),
             "level": level,
-            "dev_pct": float(plan["dev_pct"].iloc[0]),
+            "dev_pct": dev_pct_val,
             "action_allowed": action_allowed,
             "recommended_amount": computed if action_allowed else None,
             "calculation_trace": {

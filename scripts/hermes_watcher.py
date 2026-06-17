@@ -48,7 +48,7 @@ LOCAL_API_TOKEN = os.getenv("CIP_API_TOKEN", "local-dev-token-change-me")
 DAILY_TIME = os.getenv("HERMES_WATCHER_DAILY_TIME", "17:00")
 ANOMALY_TIME = os.getenv("HERMES_WATCHER_ANOMALY_TIME", "17:10")
 WEEKLY_DAY = os.getenv("HERMES_WATCHER_WEEKLY_DAY", "THU").upper()
-WEEKLY_TIME = os.getenv("HERMES_WATCHER_WEEKLY_TIME", "17:20")
+WEEKLY_TIME = os.getenv("HERMES_WATCHER_WEEKLY_TIME", "17:50")
 AUTO_CATCHUP = os.getenv("HERMES_WATCHER_AUTO_CATCHUP", "false").lower() in ("true", "1", "yes")
 
 # 路径
