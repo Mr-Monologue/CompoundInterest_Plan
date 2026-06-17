@@ -120,27 +120,42 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)):
 # 3. 行情与建议 (实时)
 @app.get("/api/advice/{code}")
 def get_advice(code: str, session: Session = Depends(get_session)):
-    # 1. 调策略模块的新接口，获取带建议的数据
+    from services.market import risk_guard
     data = get_instant_analysis(code, session)
 
-    # 2. 🔥 新增：查询该基金的前十大重仓股 🔥
+    # Add risk_guard + action_allowed
+    if data.get("action") != "ERROR":
+        passed, errors = risk_guard(
+            nav=data.get("current_price"),
+            ma200=data.get("ma200"),
+        )
+        data["action_allowed"] = passed
+        data["recommended_amount"] = data.get("suggested_amount") if passed else None
+        data["computed_amount"] = data.get("suggested_amount")
+        data["risk_guard_errors"] = errors
+
+    # 查询前十大重仓股
     holdings = session.exec(
         select(FundHolding)
         .where(FundHolding.fund_code == code)
         .order_by(FundHolding.weight.desc())
         .limit(10)
     ).all()
-
-    # 拼装到返回结果里
     data["top_holdings"] = [
         {"name": h.stock_name, "code": h.stock_code, "weight": h.weight}
         for h in holdings
     ]
-
     return data
 
 
-# 4. 交易记录
+# 4. 基金自动识别
+@app.get("/api/fund/detect/{code}")
+def detect_fund(code: str):
+    from services.market import auto_detect_fund
+    return auto_detect_fund(code)
+
+
+# 5. 交易记录
 @app.post("/api/transactions")
 def create_transaction(tx: TransactionCreate, session: Session = Depends(get_session)):
     # 逻辑：前端如果没有传 fee，我们帮他自动算

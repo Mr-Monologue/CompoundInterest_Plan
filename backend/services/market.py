@@ -371,3 +371,48 @@ def get_strategy_advice(code: str, name: str = "未知标的"):
     except Exception as e:
         print(f"❌ 计算异常: {e}")
         return {"fund_code": code, "action": "ERROR", "reason": str(e)}
+
+
+# ── Auto-detect fund ────────────────────────────────
+
+_PROXY_KW = {
+    "消费": "000932", "食品": "000932", "白酒": "399997",
+    "医药": "000991", "医疗": "000991",
+    "科技": "399006", "信息": "399006",
+    "金融": "000016", "银行": "000016",
+    "新能源": "000941", "军工": "399967",
+    "文体": "000300", "价值": "000300", "混合": "000300",
+}
+
+
+def auto_detect_fund(code: str) -> dict:
+    import requests as _r
+    result = {"code": code, "name": f"基金{code}", "proxy": "000300"}
+    try:
+        url = f"https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key={code}"
+        r = _r.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        d = r.json()
+        if d.get("Datas"):
+            name = d["Datas"][0].get("NAME", "")
+            result["name"] = name
+            for kw, px in _PROXY_KW.items():
+                if kw in name:
+                    result["proxy"] = px; break
+    except Exception:
+        pass
+    return result
+
+
+# ── Risk guard ──────────────────────────────────────
+
+def risk_guard(nav=None, ma200=None, dev_pct=None, source=""):
+    errors = []
+    if source and source.lower() == "mock":
+        errors.append("Mock data")
+    if nav is not None and (nav <= 0 or nav > 20):
+        errors.append(f"NAV anomaly: {nav}")
+    if ma200 is not None and ma200 <= 0:
+        errors.append(f"MA200 anomaly: {ma200}")
+    if dev_pct is not None and abs(dev_pct) > 0.5:
+        errors.append(f"dev_pct anomaly: {dev_pct*100:.2f}%")
+    return len(errors) == 0, errors

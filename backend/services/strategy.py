@@ -1,6 +1,6 @@
 from sqlmodel import Session, select
 from datetime import date, datetime
-from db.models import FundState, DailyPlan
+from db.models import FundState, DailyPlan, classify_dev_pct
 from db.state import get_global_state
 from services.market import get_strategy_advice
 import math
@@ -152,35 +152,45 @@ def run_strategy_analysis(code: str, session: Session):
     fund_state.last_signal_date = date.today().isoformat()
     session.add(fund_state)
 
-    # 6. 记录 DailyPlan
+    # 6. 记录 DailyPlan（修复: dev_pct=真实MA200偏离, 不DELETE历史）
     today_str = date.today().isoformat()
+    real_dev_pct = (mdata["current_price"] - mdata["ma200"]) / mdata["ma200"] if mdata["ma200"] > 0 else 0
+    computed_level = classify_dev_pct(real_dev_pct)
+
     existing = session.exec(
         select(DailyPlan).where(
             DailyPlan.asset_code == code, DailyPlan.date == today_str
         )
     ).first()
     if existing:
-        session.delete(existing)
-
-    plan = DailyPlan(
-        asset_code=code,
-        date=today_str,
-        close=mdata["current_price"],
-        ma200=mdata["ma200"],
-        dev_pct=grid_pos,
-        level=level,
-        base_amt=WEEKLY_BUDGET,
-        dyn_amt=from_res if from_res > 0 else -to_res,  # 正=取, 负=存
-        total_amt=invest,
-        reserve_before=reserve_before,
-        reserve_after=reserve_after,
-    )
-    session.add(plan)
+        # Update — never DELETE
+        existing.close = mdata["current_price"]
+        existing.ma200 = mdata["ma200"]
+        existing.dev_pct = real_dev_pct
+        existing.grid_pos = grid_pos
+        existing.level = computed_level
+        existing.base_amt = WEEKLY_BUDGET
+        existing.dyn_amt = from_res if from_res > 0 else -to_res
+        existing.total_amt = invest
+        existing.reserve_before = reserve_before
+        existing.reserve_after = reserve_after
+    else:
+        plan = DailyPlan(
+            asset_code=code, date=today_str,
+            close=mdata["current_price"], ma200=mdata["ma200"],
+            dev_pct=real_dev_pct, grid_pos=grid_pos, level=computed_level,
+            base_amt=WEEKLY_BUDGET,
+            dyn_amt=from_res if from_res > 0 else -to_res,
+            total_amt=invest,
+            reserve_before=reserve_before, reserve_after=reserve_after,
+        )
+        session.add(plan)
     session.commit()
 
     return {
         "date": today_str,
-        "level": level,
+        "level": computed_level,
+        "dev_pct": round(real_dev_pct * 100, 2),
         "grid_pos": f"{grid_pos:.1f}",
         "advice": f"建议买入 ¥{invest:.0f}",
         "details": reason,
