@@ -37,9 +37,13 @@ funds, raw_cfg = load_all_funds_config()
 code_to_cfg = {f["fund_code"]: f for f in funds}
 
 st.sidebar.header("基金管理")
-selected = st.sidebar.selectbox(
-    "选择基金", ["(全部)"] + [f["fund_code"] for f in funds]
-)
+options = ["(全部)"] + [f"{f['fund_name']} ({f['fund_code']})" for f in funds]
+selected_display = st.sidebar.selectbox("选择基金", options)
+# Extract code from display name
+if selected_display == "(全部)":
+    selected = "(全部)"
+else:
+    selected = selected_display.split("(")[-1].rstrip(")")
 
 with st.sidebar.expander("➕ 添加基金", expanded=False):
     with st.form("add_fund"):
