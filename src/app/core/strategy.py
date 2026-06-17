@@ -84,6 +84,19 @@ def determine_level(dev_pct: float) -> str:
         return "high"
 
 
+def classify_dev_pct(dev_pct: float) -> str:
+    """Canonical dev_pct → level classification. The single source of truth.
+
+    Rules:
+        low:  dev_pct <= -0.10
+        mid:  -0.10 < dev_pct <= 0.05
+        high: dev_pct > 0.05
+
+    Example: dev_pct=0.0033 (0.33%) → mid, NOT low.
+    """
+    return determine_level(dev_pct)
+
+
 def smooth_allocation_ratio(
     dev_pct: float,
     low_threshold: float = DEFAULT_PARAMS["ma200_low"],

@@ -77,7 +77,8 @@ def sample_and_store_one(fund_cfg: dict) -> dict:
             "error": f"MA200计算失败: {e}",
             "risk_guard": RiskResult(passed=False, errors=[str(e)]).__dict__,
         }
-    level = "low" if dev_pct <= -0.10 else ("mid" if dev_pct <= 0.05 else "high")
+    from ..core.strategy import classify_dev_pct
+    level = classify_dev_pct(dev_pct)
 
     dev = {
         "current_price": proxy_close,    # 修正：这是代理指数价格，不是基金净值

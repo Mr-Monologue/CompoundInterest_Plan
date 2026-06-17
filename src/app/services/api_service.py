@@ -133,7 +133,8 @@ def api_daily_sample(
     except ValueError as e:
         return {"fund_code": fund_code, "error": f"MA200计算失败: {e}", "risk_guard_passed": False}
 
-    level = "low" if dev_pct <= -0.10 else ("mid" if dev_pct <= 0.05 else "high")
+    from ..core.strategy import classify_dev_pct
+    level = classify_dev_pct(dev_pct)
 
     # 3) 准备金
     with connect_db() as con:

@@ -121,12 +121,29 @@ def action_today_status() -> Dict[str, Any]:
         rec = plan.get("recommended_amount")
         source = snap.get("proxy_source", snap.get("nav_source", "?"))
         trusted = str(source).lower() != "mock"
+        proxy_date = snap.get("proxy_date", "")
+        nav_date = snap.get("nav_date", "")
+        today_str = date.today().isoformat()
+
+        # signal_ready: proxy data is from today and trusted
+        signal_ready = (
+            trusted
+            and source.lower() != "mock"
+            and plan.get("risk_guard_passed", False)
+            and proxy_date == today_str
+        )
+        # nav_ready: fund NAV is from today
+        nav_ready = nav_date == today_str if nav_date else False
 
         result = {
             "action": "today_status",
             "fund_code": "000083",
+            "proxy_code": snap.get("proxy_code", "000932"),
             "fund_nav": snap.get("nav"),
-            "nav_date": snap.get("nav_date"),
+            "nav_date": nav_date,
+            "nav_ready": nav_ready,
+            "proxy_date": proxy_date,
+            "signal_ready": signal_ready,
             "data_source": source,
             "trusted": trusted,
             "dev_pct": plan.get("dev_pct", 0),
@@ -135,15 +152,25 @@ def action_today_status() -> Dict[str, Any]:
             "action_allowed": action_ok,
             "recommended_amount": rec if action_ok else None,
             "status": "PASS" if action_ok else "BLOCKED",
-            "message": (
-                f"PASS — 建议金额 ¥{rec:.2f}（仅供人工复核）" if action_ok and rec
-                else "BLOCKED — 数据异常，需要人工复核。本次不输出买入金额。"
-            ),
         }
 
-        if not action_ok:
+        if action_ok and rec:
+            result["message"] = (
+                f"000083 | 代理指数 {result['proxy_code']} | 偏离: {result['dev_pct']*100:.2f}%"
+                f" | 估值: {result['level']}\n"
+                f"risk_guard: {result['risk_guard']} | action_allowed: true\n"
+                f"recommended_amount: ¥{rec:.2f}（仅供人工复核）\n\n"
+                f"说明：本结论基于今日代理指数收盘数据生成。\n"
+                f"基金当日 NAV 如未更新，仅影响持仓估值展示。\n"
+                f"真实交易仍需在 GUI 中人工确认。"
+            )
+        else:
+            result["message"] = "BLOCKED — 数据异常，需要人工复核。本次不输出买入金额。"
             result["block_reason"] = (
-                f"source={source} (untrusted)" if not trusted else "risk_guard failed"
+                f"source={source} (untrusted)" if not trusted
+                else "risk_guard failed" if not action_ok
+                else "proxy data not ready" if not signal_ready
+                else "unknown"
             )
 
         return result
