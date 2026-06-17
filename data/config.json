@@ -2,7 +2,7 @@
   "version": "1.0",
   "defaults": {
     "weekly_budget": 200.0,
-    "fixed_ratio": 0.40,
+    "fixed_ratio": 0.4,
     "reserve_cap_months": 3,
     "max_weekly_multiple": 3.0,
     "ma200_low": -10.0,
@@ -30,11 +30,28 @@
         "avg_cost": 6.8627,
         "realized_pnl": -7.24
       }
+    },
+    {
+      "fund_code": "003096",
+      "fund_name": "中欧医疗健康混合C",
+      "fund_name_en": "003096.SZ",
+      "proxy_index": "000991",
+      "proxy_index_en": "000991.SS",
+      "weekly_budget": 200.0,
+      "manual_holdings": {
+        "enabled": true,
+        "units_left": 0.0,
+        "avg_cost": 0.0,
+        "realized_pnl": 0.0
+      }
     }
   ],
   "files": {
     "state": "state.json",
     "dca_log": "dca_log.csv",
-    "charts": { "ma200": "chart_ma200.png", "buypoints": "chart_buypoints.png" }
+    "charts": {
+      "ma200": "chart_ma200.png",
+      "buypoints": "chart_buypoints.png"
+    }
   }
 }
