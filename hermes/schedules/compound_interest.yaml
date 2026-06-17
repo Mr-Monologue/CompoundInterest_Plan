@@ -23,7 +23,7 @@ jobs:
       Does NOT write DB.
 
   daily_sample:
-    schedule: "every day 20:30"
+    schedule: "every day 17:00"
     tool: daily_sample
     mode: automatic
     transaction_allowed: false
@@ -38,7 +38,7 @@ jobs:
       Does NOT create transactions.
 
   anomaly_watch:
-    schedule: "every day 20:40"
+    schedule: "every day 17:10"
     tool: anomaly_watch
     mode: automatic
     transaction_allowed: false
@@ -51,7 +51,7 @@ jobs:
       Only writes alerts. Never fixes data.
 
   weekly_review:
-    schedule: "every Thursday 21:00"
+    schedule: "every Thursday 17:20"
     tool: weekly_review
     mode: automatic
     transaction_allowed: false
@@ -65,7 +65,7 @@ jobs:
       Must not output buy amounts when risk_guard fails.
 
   backup_db:
-    schedule: "every Friday 18:00"
+    schedule: "every Friday 17:00"
     tool: backup_db
     mode: automatic
     transaction_allowed: false
