@@ -62,16 +62,16 @@ function App() {
     }
   }, [assets]);
 
-  const fetchAssets = () => { fetch('http://127.0.0.1:8000/api/assets').then(res => res.json()).then(setAssets); };
+  const fetchAssets = () => { fetch('http://127.0.0.1:9090/api/assets').then(res => res.json()).then(setAssets); };
   const fetchPool = () => {
-    fetch('http://127.0.0.1:8000/api/pool').then(res=>res.json()).then(data => {
+    fetch('http://127.0.0.1:9090/api/pool').then(res=>res.json()).then(data => {
       setPoolState(data);
       setNewBase(String(data.base_investment));
       setNewBalance(String(data.pool_balance));
     });
   };
   const fetchIndustryAnalysis = () => {
-    fetch('http://127.0.0.1:8000/api/analysis/industry')
+    fetch('http://127.0.0.1:9090/api/analysis/industry')
       .then(res => res.json())
       .then(setIndustryData)
       .catch(err => console.error("Industry fetch failed", err));
@@ -79,9 +79,9 @@ function App() {
   
   const calculateFundAllocation = async () => {
     const promises = assets.map(async (asset) => {
-      const portRes = await fetch(`http://127.0.0.1:8000/api/portfolio/${asset.code}`);
+      const portRes = await fetch(`http://127.0.0.1:9090/api/portfolio/${asset.code}`);
       const portData = await portRes.json();
-      const adviceRes = await fetch(`http://127.0.0.1:8000/api/advice/${asset.code}`);
+      const adviceRes = await fetch(`http://127.0.0.1:9090/api/advice/${asset.code}`);
       const adviceData = await adviceRes.json();
       
       if (adviceData.action !== "ERROR" && portData.total_units > 0) {
@@ -99,14 +99,14 @@ function App() {
     setFundAllocData(validData);
   };
 
-  const fetchReport = (code: string) => { fetch(`http://127.0.0.1:8000/api/strategy/report/${code}`).then(res => res.json()).then(data => setReport(data.report)); };
-  const fetchTransactions = (code: string) => { fetch(`http://127.0.0.1:8000/api/transactions/${code}`).then(res => res.json()).then(setTransactions); };
+  const fetchReport = (code: string) => { fetch(`http://127.0.0.1:9090/api/strategy/report/${code}`).then(res => res.json()).then(data => setReport(data.report)); };
+  const fetchTransactions = (code: string) => { fetch(`http://127.0.0.1:9090/api/transactions/${code}`).then(res => res.json()).then(setTransactions); };
 
   const handleSelectAsset = (asset: Asset) => {
     setSelectedAsset(asset); setLoading(true); setErrorMsg(null); setAdvice(null); setPortfolio(null); setReport(""); setShowTransForm(false); setShowHistory(false);
     Promise.all([
-      fetch(`http://127.0.0.1:8000/api/advice/${asset.code}`).then(res => res.json()),
-      fetch(`http://127.0.0.1:8000/api/portfolio/${asset.code}`).then(res => res.json())
+      fetch(`http://127.0.0.1:9090/api/advice/${asset.code}`).then(res => res.json()),
+      fetch(`http://127.0.0.1:9090/api/portfolio/${asset.code}`).then(res => res.json())
     ]).then(([adviceData, portfolioData]) => {
       if (adviceData.action === "ERROR") throw new Error(adviceData.reason);
       setAdvice(adviceData); setPortfolio(portfolioData); setTransPrice(String(adviceData.current_price)); fetchReport(asset.code);
@@ -116,7 +116,7 @@ function App() {
   const handleRunAll = () => {
     if (poolState.pool_balance < 100) { if(!confirm(`⚠️ 资金池仅剩 ¥${poolState.pool_balance}，可能不足以执行建议。\n是否继续？`)) return; }
     setLoading(true);
-    fetch('http://127.0.0.1:8000/api/plan/run', { method: 'POST' })
+    fetch('http://127.0.0.1:9090/api/plan/run', { method: 'POST' })
       .then(res => res.json())
       .then(data => {
         setSuggestions(data.suggestions || []); 
@@ -127,18 +127,24 @@ function App() {
       .catch(() => { alert("执行失败"); setLoading(false); });
   };
 
-  const handleDeposit = () => { fetch('http://127.0.0.1:8000/api/pool/deposit', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ amount: depositAmount }) }).then(() => { alert(`充值成功`); setShowDeposit(false); fetchPool(); }); };
-  const handleUpdateConfig = () => { fetch('http://127.0.0.1:8000/api/pool/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ base_investment: newBase, pool_balance: newBalance }) }).then(() => { alert("配置已更新"); setShowConfig(false); fetchPool(); }); };
-  const handleAddAsset = () => { if (!newCode || !newName) return; fetch('http://127.0.0.1:8000/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: newCode, name: newName }) }).then(res => res.json()).then(data => { if(data.id) { fetchAssets(); setShowAddForm(false); setNewCode(""); setNewName(""); } }); };
-  const handleDeleteAsset = (e: React.MouseEvent, id: number) => { e.stopPropagation(); if (confirm("确定删除此基金吗？")) fetch(`http://127.0.0.1:8000/api/assets/${id}`, { method: 'DELETE' }).then(fetchAssets); };
-  const handleDeleteTransaction = (txId: number) => { if (!confirm("确定删除这条交易记录？")) return; fetch(`http://127.0.0.1:8000/api/transactions/${txId}`, { method: 'DELETE' }).then(() => { if (selectedAsset) { fetchTransactions(selectedAsset.code); handleSelectAsset(selectedAsset); fetchPool(); fetchIndustryAnalysis(); calculateFundAllocation(); } }); };
+  const handleDeposit = () => { fetch('http://127.0.0.1:9090/api/pool/deposit', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ amount: depositAmount }) }).then(() => { alert(`充值成功`); setShowDeposit(false); fetchPool(); }); };
+  const handleUpdateConfig = () => { fetch('http://127.0.0.1:9090/api/pool/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ base_investment: newBase, pool_balance: newBalance }) }).then(() => { alert("配置已更新"); setShowConfig(false); fetchPool(); }); };
+  const handleAddAsset = () => { if (!newCode || !newName) return; fetch('http://127.0.0.1:9090/api/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: newCode, name: newName }) }).then(res => res.json()).then(data => { if(data.id) { fetchAssets(); setShowAddForm(false); setNewCode(""); setNewName(""); } }); };
+  const handleDetectFund = (code: string) => {
+    if (!code || code.length < 4) return;
+    fetch('http://127.0.0.1:9090/api/fund/detect/' + code)
+      .then(res => res.json())
+      .then(data => { if (data.name && data.name !== '基金' + code) setNewName(data.name); });
+  };
+  const handleDeleteAsset = (e: React.MouseEvent, id: number) => { e.stopPropagation(); if (confirm("确定删除此基金吗？")) fetch(`http://127.0.0.1:9090/api/assets/${id}`, { method: 'DELETE' }).then(fetchAssets); };
+  const handleDeleteTransaction = (txId: number) => { if (!confirm("确定删除这条交易记录？")) return; fetch(`http://127.0.0.1:9090/api/transactions/${txId}`, { method: 'DELETE' }).then(() => { if (selectedAsset) { fetchTransactions(selectedAsset.code); handleSelectAsset(selectedAsset); fetchPool(); fetchIndustryAnalysis(); calculateFundAllocation(); } }); };
 
   const handleTransaction = () => {
     if (!selectedAsset) return;
     let finalAmount = parseFloat(transAmount);
     const price = parseFloat(transPrice);
     if (inputMode === 'shares') finalAmount = parseFloat(transShares) * price;
-    fetch('http://127.0.0.1:8000/api/transactions', {
+    fetch('http://127.0.0.1:9090/api/transactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ asset_code: selectedAsset.code, type: transType, price: price, amount: finalAmount, fee: inputMode==='shares'?0:0, from_pool: fromPool })
     }).then(res => res.json()).then(data => { 
@@ -192,7 +198,7 @@ function App() {
           {showConfig && (<div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>校准余额:</div><input className="input-dark" value={newBalance} onChange={e => setNewBalance(e.target.value)} type="number" style={{marginBottom: 5}} /><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>每份基准:</div><input className="input-dark" value={newBase} onChange={e => setNewBase(e.target.value)} type="number" style={{marginBottom: 5}} /><button onClick={handleUpdateConfig} className="btn btn-secondary" style={{width: '100%', fontSize: 12, padding: 6}}>保存</button></div>)}
         </div>
         <div className="section-header"><span>Watchlist</span><button className="btn-icon" onClick={() => setShowAddForm(!showAddForm)}><Plus size={14} /></button></div>
-        {showAddForm && (<div style={{padding:12, background:'var(--bg-panel)', borderRadius:12, marginBottom:10, border:'1px solid var(--border-active)'}}><input className="input-dark" style={{marginBottom:8}} placeholder="代码" value={newCode} onChange={e=>setNewCode(e.target.value)} /><input className="input-dark" style={{marginBottom:8}} placeholder="名称" value={newName} onChange={e=>setNewName(e.target.value)} /><button className="btn btn-primary" style={{width:'100%', justifyContent:'center'}} onClick={handleAddAsset}>确认</button></div>)}
+        {showAddForm && (<div style={{padding:12, background:'var(--bg-panel)', borderRadius:12, marginBottom:10, border:'1px solid var(--border-active)'}}><input className="input-dark" style={{marginBottom:8}} placeholder="代码" value={newCode} onChange={e=>setNewCode(e.target.value)} onBlur={e=>handleDetectFund(e.target.value)} /><input className="input-dark" style={{marginBottom:8}} placeholder="名称（自动识别）" value={newName} onChange={e=>setNewName(e.target.value)} /><button className="btn btn-primary" style={{width:'100%', justifyContent:'center'}} onClick={handleAddAsset}>确认</button></div>)}
         <div className="asset-list">{assets.map(asset => (<div key={asset.id} className={`asset-item ${selectedAsset?.id === asset.id ? 'active' : ''}`} onClick={() => handleSelectAsset(asset)}><div><div className="name">{asset.name}</div><div className="code">{asset.code}</div></div><button className="btn-icon" onClick={(e) => handleDeleteAsset(e, asset.id)}><Trash2 size={14}/></button></div>))}</div>
       </div>
 
