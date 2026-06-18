@@ -155,7 +155,41 @@ def detect_fund(code: str):
     return auto_detect_fund(code)
 
 
-# 5. 交易记录
+# 5. v0.8 策略分层视图
+@app.get("/api/strategy/framework/{code}")
+def get_strategy_framework(code: str, session: Session = Depends(get_session)):
+    from services.value_dca import build_decision_report, build_framework_response
+    from services.market import get_strategy_advice, risk_guard
+
+    # Get market data + current advice
+    mdata = get_strategy_advice(code)
+    if mdata.get("action") == "ERROR":
+        return {"error": mdata.get("reason", "数据错误")}
+
+    # Get existing strategy params
+    dev_pct = (mdata["current_price"] - mdata["ma200"]) / mdata["ma200"] if mdata["ma200"] > 0 else 0
+    passed, errors = risk_guard(nav=mdata.get("current_price"), ma200=mdata.get("ma200"))
+
+    # Build report (valuation unknown, 4% dry_run)
+    report = build_decision_report(
+        fund_code=code, fund_name=mdata.get("name", code),
+        source=mdata.get("source", "unknown"),
+        nav=mdata.get("current_price"),
+        proxy_close=mdata.get("current_price"),
+        ma200=mdata.get("ma200"),
+        dev_pct=dev_pct,
+        role="satellite", thesis="HOLD_OK",
+        last_buy_ref=mdata.get("current_price"),  # use current price as reference
+        tranches_used=0, tranches_total=10,
+        valuation_state="unknown",
+        risk_passed=passed, risk_errors=errors,
+        computed_amount=mdata.get("suggested_amount", 0),
+        action_allowed=passed,
+    )
+    return build_framework_response(report)
+
+
+# 6. 交易记录
 @app.post("/api/transactions")
 def create_transaction(tx: TransactionCreate, session: Session = Depends(get_session)):
     # 逻辑：前端如果没有传 fee，我们帮他自动算

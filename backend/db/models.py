@@ -104,3 +104,55 @@ def classify_dev_pct(dev_pct: float) -> str:
         return "mid"
     else:
         return "high"
+
+
+# ── v0.8: Value-DCA Strategy Framework ────────────
+
+# Asset role in portfolio
+class AssetRole:
+    CORE = "core"            # 核心仓位（宽基指数/优质混合）
+    SATELLITE = "satellite"   # 卫星仓位（行业/主题）
+    CASH = "cash"             # 现金等价
+    WATCH_ONLY = "watch_only" # 仅观察
+
+# Investment thesis status
+class ThesisStatus:
+    HOLD_OK = "HOLD_OK"              # 逻辑成立，继续持有
+    WATCH = "WATCH"                  # 出现疑问，加强观察
+    STOP_ADD = "STOP_ADD"            # 不再新增仓位
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"  # 需要重新评估
+
+# Valuation state (PE/PB percentile — to be plugged in later)
+class ValuationState:
+    CHEAP = "cheap"              # 低估
+    FAIR_LOW = "fair_low"        # 合理偏低
+    FAIR = "fair"                # 合理
+    FAIR_HIGH = "fair_high"      # 合理偏高
+    EXPENSIVE = "expensive"      # 偏高
+    UNKNOWN = "unknown"          # 未接入估值层
+
+# Price position state (from MA200 dev_pct)
+class PricePosition:
+    LOW = "low_position"          # dev_pct ≤ -10%
+    NORMAL = "normal_position"    # -10% < dev_pct ≤ +5%
+    HIGH = "high_position"        # dev_pct > +5%
+
+# 4% DCA rule state
+class FourPercentState:
+    DISABLED = "disabled"                # 未启用
+    NOT_STARTED = "not_started"          # 等待首次
+    WAITING_TRIGGER = "waiting_trigger"  # 等待触发
+    TRIGGERED = "triggered"              # 已触发
+    TRANCHES_EXHAUSTED = "tranches_exhausted"  # 份额耗尽
+    DISABLED_BY_VALUATION = "disabled_by_valuation"
+    DISABLED_BY_QUALITY = "disabled_by_quality"
+
+# ── Price position helper ─────────────────────────
+
+def classify_price_position(dev_pct: float) -> str:
+    if dev_pct <= -0.10:
+        return PricePosition.LOW
+    elif dev_pct <= 0.05:
+        return PricePosition.NORMAL
+    else:
+        return PricePosition.HIGH
