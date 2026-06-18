@@ -1,143 +1,115 @@
-import akshare as ak
-from sqlmodel import Session, select, delete
-from db.models import Stock, FundHolding
-from datetime import datetime
-import pandas as pd
+"""holdings.py — 基金持仓同步 + 自动行业识别"""
+import time
 import contextlib
 import os
+import requests
+from sqlmodel import Session, select, delete
+from db.models import Stock, FundHolding
+from collections import defaultdict
 
 
-# === 🛡️ 强制直连工具 ===
 @contextlib.contextmanager
 def force_no_proxy():
-    proxies = {}
-    for key in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"]:
-        if key in os.environ:
-            proxies[key] = os.environ[key]
-            del os.environ[key]
-    try:
-        yield
+    backup = {k: os.environ.get(k) for k in ["http_proxy","https_proxy","HTTP_PROXY","HTTPS_PROXY"]}
+    for k in backup: os.environ[k] = ""
+    os.environ["NO_PROXY"] = "*"
+    try: yield
     finally:
-        for key, value in proxies.items():
-            os.environ[key] = value
+        for k, v in backup.items():
+            if v is None: os.environ.pop(k, None)
+            else: os.environ[k] = v
 
 
-def fetch_holdings_akshare(code: str):
-    """
-    使用 AKShare 获取基金持仓 (最稳健方案，强制直连)
-    """
-    symbol = code.replace("sh", "").replace("sz", "")
-    current_year = datetime.now().year
+def _fetch_industry_akshare(code: str) -> str:
+    """AKShare 个股行业查询"""
+    import akshare as ak
+    try:
+        clean = code.replace("sh","").replace("sz","")
+        if not clean.isdigit() or len(clean) != 6:
+            return ""  # 港股等跳过
+        with force_no_proxy():
+            info = ak.stock_individual_info_em(symbol=clean)
+        # info is a DataFrame with 'item' and 'value' columns
+        row = info[info["item"] == "行业"]
+        if not row.empty:
+            return str(row["value"].iloc[0])
+    except Exception as e:
+        pass
+    return ""
 
+
+def _fetch_holdings_akshare(code: str):
+    """AKShare 基金持仓（用 api 包避免模块加载卡死）"""
+    import akshare as ak
+    symbol = code.replace("sh","").replace("sz","")
+    from datetime import datetime
+    year = datetime.now().year
     df = None
     try:
-        # 强制直连，避免 VPN 干扰国内接口
         with force_no_proxy():
-            # 1. 尝试获取今年的数据
-            print(f"   📡 请求 AKShare (年份: {current_year})...")
-            df = ak.fund_portfolio_hold_em(symbol=symbol, date=str(current_year))
-
-            # 2. 如果今年无数据，尝试去年
+            df = ak.fund_portfolio_hold_em(symbol=symbol, date=str(year))
             if df is None or df.empty:
-                last_year = current_year - 1
-                print(f"   ⚠️ 今年无数据，尝试获取去年 ({last_year})...")
-                df = ak.fund_portfolio_hold_em(symbol=symbol, date=str(last_year))
-
+                df = ak.fund_portfolio_hold_em(symbol=symbol, date=str(year-1))
         if df is None or df.empty:
             return None, None
-
-        # 3. 数据清洗
-        # AKShare 返回该年份所有季度数据，取最新季度
-        latest_quarter = sorted(df["季度"].unique(), reverse=True)[0]
-        print(f"   📅 锁定报告期: {latest_quarter}")
-
-        df_latest = df[df["季度"] == latest_quarter]
-
+        q = sorted(df["季度"].unique(), reverse=True)[0]
+        df = df[df["季度"] == q]
         rows = []
-        for _, row in df_latest.iterrows():
-            # 提取字段
-            weight = float(row["占净值比例"]) / 100.0
-            rows.append(
-                {
-                    "stock_code": str(row["股票代码"]),
-                    "stock_name": str(row["股票名称"]),
-                    "industry": "未分类",  # 暂时未分类，依靠 update_industries 补全
-                    "weight": weight,
-                }
-            )
-
-        return rows, latest_quarter
-
+        for _, r in df.iterrows():
+            rows.append({
+                "stock_code": str(r["股票代码"]),
+                "stock_name": str(r["股票名称"]),
+                "weight": float(r["占净值比例"]) / 100.0,
+            })
+        return rows, q
     except Exception as e:
-        print(f"   ❌ AKShare 获取异常: {e}")
+        print(f"   ⚠️ AKShare 失败: {e}")
         return None, None
 
 
 def sync_fund_holdings(session: Session, fund_code: str):
-    """
-    同步单只基金的持仓到数据库
-    """
-    print(f"🔄 同步持仓: {fund_code} ...")
-
-    # 使用 AKShare 抓取
-    holdings, report_date = fetch_holdings_akshare(fund_code)
-
+    print(f"🔄 {fund_code} ...")
+    holdings, report_date = _fetch_holdings_akshare(fund_code)
     if not holdings:
-        print(f"⚠️ {fund_code} 无持仓数据")
+        print(f"   ⚠️ 无持仓数据")
         return
 
-    # 1. 删旧数据
     session.exec(delete(FundHolding).where(FundHolding.fund_code == fund_code))
 
-    # 2. 写入新数据
     for item in holdings:
-        # A. 更新股票基础信息表 (Stock)
-        stock = session.exec(
-            select(Stock).where(Stock.code == item["stock_code"])
-        ).first()
-        if not stock:
-            stock = Stock(
-                code=item["stock_code"],
-                name=item["stock_name"],
-                industry=item["industry"],
-            )
+        sc = item["stock_code"]
+        stock = session.exec(select(Stock).where(Stock.code == sc)).first()
+
+        # 自动获取行业
+        industry = ""
+        if not stock or stock.industry == "未分类":
+            industry = _fetch_industry_akshare(sc)
+            time.sleep(0.15)  # 限速
+            if not industry and len(sc) == 5: industry = "港股/海外"
+            if not industry: industry = "未分类"
+
+        if stock:
+            if stock.industry == "未分类" and industry and industry != "未分类":
+                stock.industry = industry
+                session.add(stock)
+        else:
+            stock = Stock(code=sc, name=item["stock_name"], industry=industry or "未分类")
             session.add(stock)
 
-        # B. 写入持仓表
-        fh = FundHolding(
-            fund_code=fund_code,
-            stock_code=item["stock_code"],
-            stock_name=item["stock_name"],
-            weight=item["weight"],
-            report_date=report_date,
-        )
+        fh = FundHolding(fund_code=fund_code, stock_code=sc, stock_name=item["stock_name"],
+                         weight=item["weight"], report_date=report_date)
         session.add(fh)
 
     session.commit()
-    print(f"✅ {fund_code} 同步完成 ({len(holdings)}只股票)")
-
-
-from collections import defaultdict
+    count = session.exec(select(FundHolding).where(FundHolding.fund_code == fund_code)).all()
+    print(f"   ✅ {len(count)} 只股票 ({report_date})")
 
 
 def get_fund_industry_vector(session: Session, fund_code: str):
-    """
-    计算某基金的行业分布向量
-    """
-    holdings = session.exec(
-        select(FundHolding).where(FundHolding.fund_code == fund_code)
-    ).all()
-
-    if not holdings:
-        return None
-
-    vector = defaultdict(float)
-    total_weight = 0.0
-
-    for h in holdings:
-        stock = session.exec(select(Stock).where(Stock.code == h.stock_code)).first()
-        ind = stock.industry if stock else "未分类"
-        vector[ind] += h.weight
-        total_weight += h.weight
-
-    return dict(vector)
+    h = session.exec(select(FundHolding).where(FundHolding.fund_code == fund_code)).all()
+    if not h: return None
+    v = defaultdict(float)
+    for x in h:
+        s = session.exec(select(Stock).where(Stock.code == x.stock_code)).first()
+        v[s.industry if s else "未分类"] += x.weight
+    return dict(v)
