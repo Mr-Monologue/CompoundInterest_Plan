@@ -556,14 +556,16 @@ def run_daily_decisions(session: Session = Depends(get_session)):
                 risk_guard_passed=passed, source=src, trusted=trusted, calculation_trace=trace))
         session.commit()
         results.append({"fund_code": asset.code, "system_status": ss, "strategy_action": sa})
-    return {"date": today, "count": len(results), "results": results}
+    return {"ok": True, "date": today, "count": len(results), "created": sum(1 for r in results if r.get("status") != "API_ERROR"), "results": results}
 
 
 @app.get("/api/decision/today")
 def get_today_decisions(session: Session = Depends(get_session)):
     today = _dt.today().isoformat()
     decisions = session.exec(select(DailyDecision).where(DailyDecision.date == today)).all()
-    result = []
+    if not decisions:
+        return {"date": today, "generated": False, "generated_at": None, "count": 0, "items": [], "reason": "not_generated"}
+    items = []
     for d in decisions:
         ud = session.exec(select(UserDecision).where(UserDecision.daily_decision_id == d.id)).first()
         item = {c.name: getattr(d, c.name) for c in d.__table__.columns}
@@ -571,8 +573,9 @@ def get_today_decisions(session: Session = Depends(get_session)):
         item["actual_amount"] = ud.actual_amount if ud else None
         item["skip_reason"] = ud.skip_reason if ud else ""
         item["user_note"] = ud.user_note if ud else ""
-        result.append(item)
-    return result
+        items.append(item)
+    first = min(items, key=lambda x: x.get("created_at", "")) if items else None
+    return {"date": today, "generated": True, "generated_at": str(first.get("created_at", "")) if first else None, "count": len(items), "items": items}
 
 
 @app.post("/api/decision/{decision_id}/ack")

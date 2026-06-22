@@ -55,7 +55,7 @@ function App() {
   const fetchDailyDecisions = () => {
     fetch('http://127.0.0.1:9090/api/decision/today')
       .then(r => r.json())
-      .then(data => setDailyDecisions(Array.isArray(data) ? data : []))
+      .then(data => setDailyDecisions(data.items || []))
       .catch(() => setDailyDecisions([]));
   };
 
@@ -235,8 +235,11 @@ function App() {
             {dailyDecisions.length===0 ? (
               <div style={{textAlign:'center', padding:30}}>
                 <div style={{color:'#71717a', marginBottom:16}}>今日操作计划尚未生成</div>
+                <div style={{fontSize:11, color:'#52525b', marginBottom:16, textAlign:'left', display:'inline-block'}}>
+                  可能原因：<br/>1. Scheduler 今天还没有运行<br/>2. 代理指数数据尚未ready<br/>3. 后端 API 未连接<br/>4. 今日计划生成失败
+                </div>
                 <button onClick={handleGenerateToday} className="btn btn-primary" style={{padding:'10px 24px'}}>生成今日计划</button>
-              </div>
+              </div>)
             ) : (
               (() => {
                 const act = dailyDecisions.filter(d => ['fixed_dca','dynamic_dca','buy'].includes(d.strategy_action) && d.system_status==='PASS');
