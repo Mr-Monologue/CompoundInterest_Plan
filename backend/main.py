@@ -511,5 +511,96 @@ async def serve_frontend(full_path: str):
         }
 
 
+# ── v0.8.2 Daily Decision APIs ────────────────────
+
+from db.models import DailyDecision, UserDecision
+import json as _json
+from datetime import date as _dt, datetime as _datetime
+
+
+@app.post("/api/decision/run-daily")
+def run_daily_decisions(session: Session = Depends(get_session)):
+    today = _dt.today().isoformat()
+    assets = session.exec(select(Asset)).all()
+    results = []
+    for asset in assets:
+        from services.market import get_strategy_advice, risk_guard
+        from services.value_dca import evaluate_data_layer, evaluate_price_layer, evaluate_risk_layer
+        mdata = get_strategy_advice(asset.code)
+        if mdata.get("action") == "ERROR": results.append({"fund_code": asset.code, "status": "API_ERROR"}); continue
+        dev_pct = (mdata["current_price"] - mdata["ma200"]) / mdata["ma200"] if mdata["ma200"] > 0 else 0
+        passed, errors = risk_guard(nav=mdata.get("current_price"), ma200=mdata.get("ma200"))
+        src = mdata.get("source", ""); trusted = src.lower() != "mock"
+        data_layer = evaluate_data_layer(mdata.get("current_price"), mdata.get("current_price"), mdata.get("ma200"), src)
+        price_layer = evaluate_price_layer(dev_pct)
+        ss = "BLOCKED" if (not trusted or not passed or data_layer.blocking) else "PASS"
+        if src.lower() == "mock": ss = "BLOCKED"
+        grid = mdata.get("grid_pos", 0) or 0
+        sa = "review_required" if ss == "BLOCKED" else ("take_profit_watch" if grid > 1 else ("dynamic_dca" if grid < -2 else ("observe" if mdata.get("suggested_amount", 0) == 0 else "fixed_dca")))
+        ap = "hide_amount" if ss == "BLOCKED" else ("show_recommended_amount" if passed else "audit_only")
+        rec = mdata.get("suggested_amount") if ap == "show_recommended_amount" else None
+        trace = _json.dumps({"dev_pct": dev_pct, "grid_pos": grid, "computed_amount": mdata.get("suggested_amount", 0), "risk_guard_passed": passed, "source": src})
+        existing = session.exec(select(DailyDecision).where(DailyDecision.date == today, DailyDecision.fund_code == asset.code)).first()
+        if existing:
+            existing.system_status=ss; existing.strategy_action=sa; existing.recommended_amount=rec
+            existing.amount_permission=ap; existing.reason_summary=f"grid={grid:.1f}"
+            existing.risk_reasons="; ".join(errors); existing.signal_ready=data_layer.status=="READY"
+            existing.price_position=price_layer.status; existing.risk_guard_passed=passed
+            existing.source=src; existing.trusted=trusted; existing.calculation_trace=trace
+            session.add(existing)
+        else:
+            session.add(DailyDecision(date=today, fund_code=asset.code, fund_name=asset.name,
+                system_status=ss, strategy_action=sa, recommended_amount=rec, amount_permission=ap,
+                reason_summary=f"grid={grid:.1f}", risk_reasons="; ".join(errors),
+                signal_ready=data_layer.status=="READY", price_position=price_layer.status,
+                risk_guard_passed=passed, source=src, trusted=trusted, calculation_trace=trace))
+        session.commit()
+        results.append({"fund_code": asset.code, "system_status": ss, "strategy_action": sa})
+    return {"date": today, "count": len(results), "results": results}
+
+
+@app.get("/api/decision/today")
+def get_today_decisions(session: Session = Depends(get_session)):
+    today = _dt.today().isoformat()
+    decisions = session.exec(select(DailyDecision).where(DailyDecision.date == today)).all()
+    result = []
+    for d in decisions:
+        ud = session.exec(select(UserDecision).where(UserDecision.daily_decision_id == d.id)).first()
+        item = {c.name: getattr(d, c.name) for c in d.__table__.columns}
+        item["user_action"] = ud.user_action if ud else "pending"
+        item["actual_amount"] = ud.actual_amount if ud else None
+        item["skip_reason"] = ud.skip_reason if ud else ""
+        item["user_note"] = ud.user_note if ud else ""
+        result.append(item)
+    return result
+
+
+@app.post("/api/decision/{decision_id}/ack")
+def ack_decision(decision_id: int, session: Session = Depends(get_session)):
+    ud = session.exec(select(UserDecision).where(UserDecision.daily_decision_id == decision_id)).first()
+    if not ud: ud = UserDecision(daily_decision_id=decision_id, user_action="acknowledged")
+    else: ud.user_action = "acknowledged"
+    session.add(ud); session.commit(); return {"ok": True}
+
+
+@app.post("/api/decision/{decision_id}/user-action")
+def record_user_action(decision_id: int, data: dict, session: Session = Depends(get_session)):
+    ud = session.exec(select(UserDecision).where(UserDecision.daily_decision_id == decision_id)).first()
+    if not ud: ud = UserDecision(daily_decision_id=decision_id)
+    ud.user_action = data.get("action", "pending")
+    ud.actual_amount = data.get("actual_amount")
+    ud.skip_reason = data.get("skip_reason", "")
+    ud.user_note = data.get("user_note", "")
+    if data.get("action") in ("executed", "skipped"): ud.confirmed_at = _datetime.now()
+    session.add(ud); session.commit(); return {"ok": True}
+
+
+@app.get("/api/decision/history")
+def get_decision_history(days: int = 7, session: Session = Depends(get_session)):
+    from datetime import timedelta
+    start = (_dt.today() - timedelta(days=days)).isoformat()
+    return session.exec(select(DailyDecision).where(DailyDecision.date >= start).order_by(DailyDecision.date.desc())).all()
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=9090)

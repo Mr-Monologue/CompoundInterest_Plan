@@ -156,3 +156,48 @@ def classify_price_position(dev_pct: float) -> str:
         return PricePosition.NORMAL
     else:
         return PricePosition.HIGH
+
+
+# ── v0.8.2 Daily Decision + User Decision ──────────
+
+class DailyDecision(SQLModel, table=True):
+    """每日操作计划 — 由 Scheduler 自动生成，周/月复盘数据源"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: str = Field(index=True)
+    fund_code: str = Field(index=True)
+    fund_name: str = ""
+
+    # Decision fields
+    system_status: str = "PASS"         # PASS/BLOCKED/WAITING/ANOMALY
+    strategy_action: str = "fixed_dca"  # fixed_dca/dynamic_dca/observe/stop_dynamic/take_profit_watch/review_required
+    recommended_amount: Optional[float] = None
+    amount_permission: str = "hide_amount"  # show_recommended_amount/hide_amount/audit_only
+    reason_summary: str = ""
+    risk_reasons: str = ""
+
+    # Signal state
+    signal_ready: bool = False
+    nav_ready: bool = False
+    valuation_state: str = "unknown"
+    price_position: str = "normal_position"
+    four_percent_state: str = "disabled"
+    risk_guard_passed: bool = True
+    source: str = ""
+    trusted: bool = True
+
+    # Audit
+    calculation_trace: str = ""  # JSON string
+    created_by: str = "scheduler"
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class UserDecision(SQLModel, table=True):
+    """用户对每日操作计划的执行记录"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    daily_decision_id: Optional[int] = Field(default=None, foreign_key="dailydecision.id")
+    user_action: str = "pending"    # pending/acknowledged/executed/skipped
+    actual_amount: Optional[float] = None
+    actual_transaction_id: Optional[int] = None
+    skip_reason: str = ""
+    user_note: str = ""
+    confirmed_at: Optional[datetime] = None

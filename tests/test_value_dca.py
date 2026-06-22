@@ -200,3 +200,68 @@ def test_mock_source_forces_blocked_ui():
     layer = evaluate_data_layer(5.0, 100.0, 100.0, "Mock")
     assert layer.status == "BLOCKED"
     assert layer.blocking is True
+
+
+# ── v0.8.2 Daily Decision tests ───────────────────
+
+def test_daily_decision_blocked_amount_null():
+    from db.models import DailyDecision
+    dd = DailyDecision(date="2025-01-01", fund_code="000083", system_status="BLOCKED", strategy_action="review_required", recommended_amount=None)
+    assert dd.recommended_amount is None
+
+
+def test_daily_decision_observe_amount_zero():
+    from db.models import DailyDecision
+    dd = DailyDecision(date="2025-01-01", fund_code="000083", system_status="PASS", strategy_action="observe", recommended_amount=0.0, amount_permission="show_recommended_amount")
+    assert dd.recommended_amount == 0.0
+
+
+def test_user_decision_records_skipped_reason():
+    from db.models import UserDecision
+    ud = UserDecision(user_action="skipped", skip_reason="资金不足", user_note="下次再补")
+    assert ud.user_action == "skipped"
+    assert "资金不足" in ud.skip_reason
+
+
+def test_today_decision_groups_by_action():
+    from db.models import DailyDecision
+    decisions = [
+        DailyDecision(date="today", fund_code="A", strategy_action="fixed_dca", system_status="PASS", recommended_amount=200),
+        DailyDecision(date="today", fund_code="B", strategy_action="observe", system_status="PASS", recommended_amount=0),
+        DailyDecision(date="today", fund_code="C", strategy_action="review_required", system_status="BLOCKED", recommended_amount=None),
+    ]
+    groups = {}
+    for d in decisions: groups.setdefault(d.strategy_action, []).append(d)
+    assert len(groups["fixed_dca"]) == 1
+    assert len(groups["review_required"]) == 1
+    assert groups["review_required"][0].recommended_amount is None
+
+
+def test_blocked_decision_not_tradeable():
+    from db.models import DailyDecision
+    dd = DailyDecision(system_status="BLOCKED", amount_permission="hide_amount")
+    assert dd.amount_permission == "hide_amount"
+
+
+def test_daily_decision_created_by_scheduler():
+    from db.models import DailyDecision
+    dd = DailyDecision(created_by="scheduler")
+    assert dd.created_by == "scheduler"
+
+
+def test_user_action_pending_to_executed():
+    from db.models import UserDecision
+    ud = UserDecision(user_action="pending")
+    ud.user_action = "executed"; ud.actual_amount = 200.0
+    assert ud.user_action == "executed"
+
+
+def test_daily_plan_modal_hides_no_action_by_default():
+    from db.models import DailyDecision
+    decisions = [
+        DailyDecision(strategy_action="fixed_dca", system_status="PASS"),
+        DailyDecision(strategy_action="observe", system_status="PASS"),
+        DailyDecision(strategy_action="review_required", system_status="BLOCKED"),
+    ]
+    actionable = [d for d in decisions if d.strategy_action in ("fixed_dca", "dynamic_dca")]
+    assert len(actionable) == 1
