@@ -239,7 +239,7 @@ function App() {
                   可能原因：<br/>1. Scheduler 今天还没有运行<br/>2. 代理指数数据尚未ready<br/>3. 后端 API 未连接<br/>4. 今日计划生成失败
                 </div>
                 <button onClick={handleGenerateToday} className="btn btn-primary" style={{padding:'10px 24px'}}>生成今日计划</button>
-              </div>)
+              </div>
             ) : (
               (() => {
                 const act = dailyDecisions.filter(d => ['fixed_dca','dynamic_dca','buy'].includes(d.strategy_action) && d.system_status==='PASS');
