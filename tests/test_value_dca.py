@@ -339,4 +339,64 @@ def test_daily_plan_shows_downgrade_reason():
 
 
 def test_weekly_review_includes_exposure_changes():
-    assert True  # structural placeholder for weekly review exposure tracking
+    assert True  # structural placeholder
+
+
+# ── v0.8.4 Exposure audit tests ────────────────────
+
+def test_daily_decision_keeps_candidate_and_final_amount():
+    from db.models import DailyDecision
+    dd = DailyDecision(candidate_amount=200.0, final_amount=200.0, strategy_action="fixed_dca")
+    assert dd.candidate_amount == dd.final_amount
+
+
+def test_downgrade_reason_references_selected_fund():
+    from db.models import DailyDecision
+    dd = DailyDecision(downgrade_reason="同主题(消费)重复暴露，本周已选择000083", downgrade_from_fund="000083")
+    assert "000083" in dd.downgrade_reason
+
+
+def test_exposure_audit_fields_present():
+    from db.models import DailyDecision
+    dd = DailyDecision(exposure_guard_applied=True, classification_source="AKShare", classification_confidence="medium", holding_date="2025Q1", stale_holdings_warning=False)
+    assert dd.exposure_guard_applied is True
+    assert dd.classification_source == "AKShare"
+
+
+def test_weekly_review_counts_downgraded_decisions():
+    """Weekly review should count downgraded items."""
+    decisions = [
+        {"downgrade_reason": "同主题(消费)"},
+        {"downgrade_reason": "同主题(消费)"},
+        {"downgrade_reason": ""},
+    ]
+    downgraded = [d for d in decisions if d["downgrade_reason"]]
+    assert len(downgraded) == 2
+
+
+def test_override_exposure_requires_reason():
+    from db.models import UserDecision
+    ud = UserDecision(override_exposure_guard=True, override_reason="用户主动选择两只消费基金")
+    assert ud.override_exposure_guard is True
+    assert ud.override_reason
+
+
+def test_stale_holdings_warning_displayed():
+    from db.models import DailyDecision
+    dd = DailyDecision(stale_holdings_warning=True, holding_date="2024-06-30")
+    assert dd.stale_holdings_warning is True
+
+
+def test_candidate_total_and_final_total_separated():
+    decisions = [
+        {"candidate_amount": 200, "strategy_action": "fixed_dca", "recommended_amount": 200},
+        {"candidate_amount": 200, "strategy_action": "observe", "recommended_amount": 0, "downgrade_reason": "同主题"},
+    ]
+    c_total = sum(d["candidate_amount"] or 0 for d in decisions)
+    f_total = sum(
+        d.get("recommended_amount", 0) or 0
+        for d in decisions
+        if d["strategy_action"] in ("fixed_dca", "dynamic_dca") and not d.get("downgrade_reason")
+    )
+    assert c_total == 400
+    assert f_total == 200

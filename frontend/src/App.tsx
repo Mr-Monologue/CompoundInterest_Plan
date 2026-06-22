@@ -237,6 +237,24 @@ function App() {
               <div><h3 style={{margin:0, fontSize:20}}>📋 今日操作计划</h3><div style={{fontSize:12, color:'#71717a', marginTop:4}}>由系统自动分析生成，仅供人工复核，不会自动交易。</div></div>
               <button onClick={()=>setShowDailyPlan(false)} style={{background:'none', border:'none', color:'#666', cursor:'pointer', fontSize:20}}>✕</button>
             </div>
+            {dailyDecisions.length > 0 && (() => {
+              const candidateTotal = dailyDecisions.reduce((s,d)=>s+(d.candidate_amount||0),0);
+              const finalTotal = dailyDecisions.filter(d=>['fixed_dca','dynamic_dca'].includes(d.strategy_action)).reduce((s,d)=>s+(d.recommended_amount||0),0);
+              const downgraded = dailyDecisions.filter(d=>d.downgrade_reason);
+              const cap = 600;
+              if (candidateTotal > cap || downgraded.length > 0) return (
+                <div style={{background:'rgba(99,102,241,0.08)', borderRadius:10, padding:12, marginBottom:16, border:'1px solid rgba(99,102,241,0.15)'}}>
+                  <div style={{fontSize:12, fontWeight:600, color:'#a5b4fc', marginBottom:8}}>🔍 暴露闸门审计</div>
+                  <div style={{display:'flex', gap:16, flexWrap:'wrap', fontSize:12}}>
+                    <span>原始候选: <b style={{color:'#f59e0b'}}>¥{candidateTotal}</b></span>
+                    <span>最终建议: <b style={{color:'#10b981'}}>¥{finalTotal}</b></span>
+                    <span>组合上限: ¥{cap}</span>
+                    {downgraded.length>0 && <span style={{color:'#f97316'}}>降级: {downgraded.length}只</span>}
+                  </div>
+                </div>
+              );
+              return null;
+            })()}
             {dailyDecisions.length===0 ? (
               <div style={{textAlign:'center', padding:30}}>
                 <div style={{color:'#71717a', marginBottom:16}}>今日操作计划尚未生成</div>

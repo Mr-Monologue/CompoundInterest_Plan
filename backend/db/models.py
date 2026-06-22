@@ -199,6 +199,15 @@ class DailyDecision(SQLModel, table=True):
     theme_bucket: str = "未分类"
     downgraded_from_action: str = ""            # original action before downgrade
     downgrade_reason: str = ""
+    downgrade_from_fund: str = ""               # which fund caused downgrade
+    candidate_action: str = ""                  # original candidate action
+    final_action: str = ""                      # final action after guard
+    exposure_guard_applied: bool = False        # was guard applied?
+    industry_exposure_before: str = ""          # JSON: {industry: pct}
+    classification_source: str = ""             # AKShare/manual/fallback
+    classification_confidence: str = ""         # high/medium/low
+    holding_date: str = ""                      # 持仓报告日期
+    stale_holdings_warning: bool = False        # >120天未更新
 
 
 class UserDecision(SQLModel, table=True):
@@ -211,3 +220,6 @@ class UserDecision(SQLModel, table=True):
     skip_reason: str = ""
     user_note: str = ""
     confirmed_at: Optional[datetime] = None
+    # v0.8.4: override exposure guard
+    override_exposure_guard: bool = False
+    override_reason: str = ""
