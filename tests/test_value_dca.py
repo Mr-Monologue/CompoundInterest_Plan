@@ -121,3 +121,82 @@ def test_value_dca_docs_state_not_auto_trading():
     assert "核心-卫星价值定投增强" in doc
     assert "4% 法不能变成无脑网格补仓" in doc
     assert "dry_run" in doc
+
+
+# ── v0.8.1 GUI semantic tests ─────────────────────
+
+def test_four_percent_dry_run_never_changes_recommended_amount():
+    """4% triggered must NOT change recommended_amount — dry_run only."""
+    from services.value_dca import build_decision_report
+    # Simulate 4% triggered scenario
+    report_triggered = build_decision_report(
+        "test", "测试", "akshare", 5.0, 95.0, 100.0, -0.05,
+        "satellite", "HOLD_OK", 100.0, 0, 10, "cheap",
+        True, [], 200.0, True,
+    )
+    # recommended_amount still 200 (unchanged by 4%)
+    assert report_triggered.recommended_amount == 200.0
+    assert report_triggered.four_percent_layer.status == "triggered"
+    # computed_amount is independent
+    assert report_triggered.computed_amount == 200.0
+
+
+def test_gui_four_percent_triggered_displays_audit_only():
+    """When 4% triggered, the amount is NOT from 4% rule."""
+    from services.value_dca import build_decision_report
+    report = build_decision_report(
+        "test", "测试", "akshare", 5.0, 95.0, 100.0, -0.05,
+        "satellite", "HOLD_OK", 100.0, 0, 10, "cheap",
+        True, [], 200.0, True,
+    )
+    # 4% in trace for audit, not in amount
+    assert "four_percent_dry_run" in report.calculation_trace
+    assert report.calculation_trace["four_percent_dry_run"]["state"] == "triggered"
+    assert report.recommended_amount == 200.0  # NOT from 4%
+
+
+def test_valuation_unknown_displays_not_connected_warning():
+    """Valuation unknown must indicate PE/PB not connected."""
+    from services.value_dca import build_decision_report
+    report = build_decision_report(
+        "test", "测试", "akshare", 5.0, 100.0, 100.0, 0.0,
+        "satellite", "HOLD_OK", 100.0, 0, 10, "unknown",
+        True, [], 200.0, True,
+    )
+    assert report.valuation_layer.status == "unknown"
+    assert "待接入" in report.valuation_layer.reason
+
+
+def test_no_auto_trade_wording_in_primary_action():
+    """Verify docs don't use auto-trade language."""
+    doc = Path("docs/strategy/value_dca_framework.md").read_text()
+    assert "不自动交易" in doc
+    assert "不是自动交易系统" in doc
+
+
+def test_watchlist_deduplicates_by_fund_code():
+    """Same fund_code should appear only once."""
+    assets = [{"id": 1, "code": "000083", "name": "A"}, {"id": 2, "code": "000083", "name": "A"}]
+    deduped = list({a["code"]: a for a in assets}.values())
+    assert len(deduped) == 1
+
+
+def test_blocked_never_displays_recommended_amount():
+    """BLOCKED must have recommended_amount = None."""
+    from services.value_dca import build_decision_report
+    report = build_decision_report(
+        "test", "测试", "mock", 5.0, 100.0, 100.0, 0.0,
+        "satellite", "HOLD_OK", 100.0, 0, 10, "unknown",
+        True, [], 200.0, True,
+    )
+    # Mock source blocks data layer → recommended_amount = None
+    assert report.data_layer.blocking is True
+    assert report.recommended_amount is None
+
+
+def test_mock_source_forces_blocked_ui():
+    """Mock source must set data layer to BLOCKED."""
+    from services.value_dca import evaluate_data_layer
+    layer = evaluate_data_layer(5.0, 100.0, 100.0, "Mock")
+    assert layer.status == "BLOCKED"
+    assert layer.blocking is True

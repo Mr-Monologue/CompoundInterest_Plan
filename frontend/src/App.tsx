@@ -107,7 +107,36 @@ function App() {
     setFundAllocData(validData);
   };
 
-  const fetchReport = (code: string) => { fetch(`http://127.0.0.1:9090/api/strategy/report/${code}`).then(res => res.json()).then(data => setReport(data.report)); };
+  const getSystemStatus = () => {
+    if (!advice) return "API_ERROR";
+    if (advice.action === "ERROR") return "API_ERROR";
+    const src = advice.source || "";
+    if (src.toLowerCase() === "mock") return "BLOCKED";
+    if (advice.action_allowed === false) return "BLOCKED";
+    if (advice.risk_guard_errors && advice.risk_guard_errors.length > 0) return "ANOMALY";
+    return "PASS";
+  };
+
+  const getStrategyAction = () => {
+    if (!advice || getSystemStatus() === "BLOCKED") return "review_required";
+    const grid = advice.grid_pos || 0;
+    if (grid > 1) return "take_profit_watch";
+    if (grid < -2) return "dynamic_dca";
+    if (advice.suggested_amount === 0) return "observe";
+    if (advice.suggested_amount < advice.pool_balance * 0.5) return "fixed_dca";
+    return "dynamic_dca";
+  };
+
+  const getAmountPermission = () => {
+    if (!advice || getSystemStatus() === "BLOCKED") return "hide_amount";
+    if (advice.action_allowed === true && advice.recommended_amount != null) return "show_recommended_amount";
+    return "audit_only";
+  };
+
+  const strategyLabels: Record<string, string> = {
+    fixed_dca: "固定定投", dynamic_dca: "动态定投", observe: "观察 / 暂停新增",
+    stop_dynamic: "暂停动态部分", take_profit_watch: "止盈观察", review_required: "需人工复核"
+  };
   const fetchTransactions = (code: string) => { fetch(`http://127.0.0.1:9090/api/transactions/${code}`).then(res => res.json()).then(setTransactions); };
 
   const handleSelectAsset = (asset: Asset) => {
@@ -201,13 +230,13 @@ function App() {
           <button className="btn-icon" style={{position: 'absolute', top: 10, right: 10}} onClick={() => setShowConfig(!showConfig)}><Settings size={14} /></button>
           <div><div className="global-label">Investable Pool</div><div className="global-value" style={{color: poolState.pool_balance < 100 ? '#ef4444' : '#fff'}}>¥ {Number(poolState.pool_balance).toFixed(0)}</div></div>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:5}}><div className="global-sub">基准: ¥{poolState.base_investment}/次</div></div>
-          <div style={{display: 'flex', gap: 8, marginTop: 15}}><button onClick={() => setShowDeposit(!showDeposit)} className="btn btn-secondary" style={{flex:1, justifyContent:'center'}}>+ 充值</button><button onClick={handleRunAll} className="btn btn-primary" style={{flex:1, justifyContent:'center'}}>🚀 发车</button></div>
+          <div style={{display: 'flex', gap: 8, marginTop: 15}}><button onClick={() => setShowDeposit(!showDeposit)} className="btn btn-secondary" style={{flex:1, justifyContent:'center'}}>+ 充值</button><button onClick={handleRunAll} className="btn btn-primary" style={{flex:1, justifyContent:'center'}}>运行策略分析</button></div>
           {showDeposit && (<div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}><input className="input-dark" placeholder="金额" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} style={{marginBottom: 5}} /><button onClick={handleDeposit} className="btn btn-primary" style={{width: '100%', fontSize: 12, padding: 6}}>确认充值</button></div>)}
           {showConfig && (<div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>校准余额:</div><input className="input-dark" value={newBalance} onChange={e => setNewBalance(e.target.value)} type="number" style={{marginBottom: 5}} /><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>每份基准:</div><input className="input-dark" value={newBase} onChange={e => setNewBase(e.target.value)} type="number" style={{marginBottom: 5}} /><button onClick={handleUpdateConfig} className="btn btn-secondary" style={{width: '100%', fontSize: 12, padding: 6}}>保存</button></div>)}
         </div>
         <div className="section-header"><span>Watchlist</span><button className="btn-icon" onClick={() => setShowAddForm(!showAddForm)}><Plus size={14} /></button></div>
         {showAddForm && (<div style={{padding:12, background:'var(--bg-panel)', borderRadius:12, marginBottom:10, border:'1px solid var(--border-active)'}}><input className="input-dark" style={{marginBottom:8}} placeholder="代码" value={newCode} onChange={e=>setNewCode(e.target.value)} onBlur={e=>handleDetectFund(e.target.value)} /><input className="input-dark" style={{marginBottom:8}} placeholder="名称（自动识别）" value={newName} onChange={e=>setNewName(e.target.value)} /><button className="btn btn-primary" style={{width:'100%', justifyContent:'center'}} onClick={handleAddAsset}>确认</button></div>)}
-        <div className="asset-list">{assets.map(asset => (<div key={asset.id} className={`asset-item ${selectedAsset?.id === asset.id ? 'active' : ''}`} onClick={() => handleSelectAsset(asset)}><div><div className="name">{asset.name}</div><div className="code">{asset.code}</div></div><button className="btn-icon" onClick={(e) => handleDeleteAsset(e, asset.id)}><Trash2 size={14}/></button></div>))}</div>
+        <div className="asset-list">{[...new Map(assets.map(a => [a.code, a])).values()].map(asset => (<div key={asset.code} className={`asset-item ${selectedAsset?.code === asset.code ? 'active' : ''}`} onClick={() => handleSelectAsset(asset)}><div><div className="name">{asset.name}</div><div className="code">{asset.code}</div></div><button className="btn-icon" onClick={(e) => handleDeleteAsset(e, asset.id)}><Trash2 size={14}/></button></div>))}</div>
       </div>
 
       <div className="main-content">
@@ -226,8 +255,29 @@ function App() {
             </div>
 
             <div className="card signal-card">
-              <div className="card-header"><div className="card-title"><Zap size={18}/> 智能信号</div></div>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end'}}><div><div className="big-number" style={{fontSize:32, color:advice.action==='BUY'?'var(--success)':'var(--warning)', background:'none', WebkitTextFillColor:'initial'}}>{advice.action==='BUY'?'建议定投':(advice.action==='WAIT'?'观望/止盈':'建议卖出')}</div><div style={{marginTop:8, color:'var(--text-muted)', fontSize:13}}>{advice.reason}</div></div><div style={{textAlign:'right'}}><div style={{fontSize:12, color:'var(--text-dim)', marginBottom:4}}>建议金额</div><div style={{fontSize:28, fontFamily:'var(--font-mono)', fontWeight:700, color:'var(--primary)'}}>¥ {advice.suggested_amount}</div></div></div>
+              <div className="card-header"><div className="card-title"><Zap size={18}/> 今日决策</div></div>
+              {(() => {
+                const ss = getSystemStatus();
+                const sa = getStrategyAction();
+                const ap = getAmountPermission();
+                const labels: Record<string, {icon: string, color: string}> = {PASS: {icon:'✅', color:'#10b981'}, BLOCKED: {icon:'⛔', color:'#ef4444'}, WAITING: {icon:'⏳', color:'#f59e0b'}, ANOMALY: {icon:'⚠️', color:'#f97316'}, API_ERROR: {icon:'❌', color:'#ef4444'}};
+                const l = labels[ss] || labels.API_ERROR;
+                return (<>
+                  <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                    <div style={{fontSize:13, color:'var(--text-dim)'}}>系统状态</div>
+                    <div style={{fontSize:18, fontWeight:700, color:l.color}}>{l.icon} {ss}</div>
+                    <div style={{fontSize:13, color:'var(--text-dim)', marginTop:4}}>策略动作</div>
+                    <div style={{fontSize:16, fontWeight:600}}>{strategyLabels[sa] || sa}</div>
+                    <div style={{fontSize:13, color:'var(--text-dim)', marginTop:4}}>建议金额</div>
+                    {ap === 'show_recommended_amount' && advice.recommended_amount != null
+                      ? <div style={{fontSize:22, fontFamily:'var(--font-mono)', fontWeight:700, color:'var(--primary)'}}>¥ {advice.recommended_amount} <span style={{fontSize:11, color:'var(--text-dim)', fontWeight:400}}>仅供人工复核</span></div>
+                      : ap === 'audit_only'
+                      ? <div style={{fontSize:14, color:'var(--text-dim)'}}>¥0（计算金额见审计详情）</div>
+                      : <div style={{fontSize:14, color:'#ef4444'}}>不输出金额</div>}
+                    {ss === 'BLOCKED' && <div style={{fontSize:11, color:'#ef4444', marginTop:4}}>原因: {advice.risk_guard_errors?.join('; ') || '数据异常'}</div>}
+                  </div>
+                </>);
+              })()}
             </div>
 
             <div className="card strategy-card">
@@ -271,7 +321,16 @@ function App() {
                     );
                   })}
                 </div>
-                <div style={{marginTop:10, fontSize:11, color:'var(--text-dim)'}}>💡 估值层待接入 | 4%触发层dry_run | 风控层决定金额展示</div>
+                {(() => {
+                  const fp = framework?.layers?.four_percent;
+                  const val = framework?.layers?.valuation;
+                  const msgs: string[] = [];
+                  if (val?.status === 'unknown') msgs.push('⚠️ 估值层尚未接入 PE/PB/股息率等基本面指标；当前不代表已完成价值估值判断。');
+                  if (fp?.status === 'triggered') msgs.push('🔬 4%触发仅作为观察信号（dry_run），未进入本次建议金额。');
+                  if (fp?.status && fp.status !== 'triggered') msgs.push('🔬 4%触发层为实验模块（dry_run），不影响实盘金额。');
+                  if (msgs.length === 0) msgs.push('风控层决定金额展示');
+                  return msgs.map((m, i) => <div key={i} style={{marginTop:8, fontSize:11, color:'var(--text-dim)'}}>{m}</div>);
+                })()}
               </div>
               )}
               <div className="card" style={{ gridColumn: 'span 6', minHeight: 400 }}>
