@@ -258,14 +258,14 @@ function App() {
                   </div>
                   {act.length>0 && (<><div style={{fontSize:13,fontWeight:600,color:'#10b981',marginBottom:8}}>需要处理</div>
                     {act.map(d=>(<div key={d.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:12,marginBottom:8,background:'rgba(16,185,129,0.06)',borderRadius:10,border:'1px solid rgba(16,185,129,0.15)'}}>
-                      <div><div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div><div style={{fontSize:12,color:'#71717a'}}>{d.reason_summary}</div></div>
+                      <div><div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div><div style={{fontSize:12,color:'#71717a'}}>{d.downgrade_reason && <div style={{fontSize:11,color:'#f59e0b',marginTop:2}}>⬇ {d.downgrade_reason}</div>}</div></div>
                       <div style={{display:'flex',alignItems:'center',gap:12}}><span style={{fontWeight:700,color:'#10b981'}}>¥{d.recommended_amount||0}</span>
                         <button onClick={()=>handleUserAction(d.id,'executed',d.recommended_amount)} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#10b98120',color:'#10b981',border:'1px solid #10b98150',borderRadius:6}}>已完成</button>
                         <button onClick={()=>{const r=prompt('跳过原因');if(r)handleUserAction(d.id,'skipped',undefined,r)}} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#f59e0b20',color:'#f59e0b',border:'1px solid #f59e0b50',borderRadius:6}}>跳过</button>
                       </div></div>))}</>)}
                   {obs.length>0 && (<><div style={{fontSize:13,fontWeight:600,color:'#f59e0b',marginBottom:8,marginTop:16}}>观察项</div>
                     {obs.map(d=>(<div key={d.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:12,marginBottom:8,background:'rgba(245,158,11,0.04)',borderRadius:10,border:'1px solid rgba(245,158,11,0.1)'}}>
-                      <div><div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div><div style={{fontSize:12,color:'#71717a'}}>{d.reason_summary}</div></div>
+                      <div><div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div><div style={{fontSize:12,color:'#71717a'}}>{d.downgrade_reason && <div style={{fontSize:11,color:'#f59e0b',marginTop:2}}>⬇ {d.downgrade_reason}</div>}</div></div>
                       <div style={{display:'flex',alignItems:'center',gap:12}}><span style={{color:'#71717a'}}>{d.recommended_amount===0?'¥0 不新增':'不新增'}</span>
                         <button onClick={()=>handleUserAction(d.id,'acknowledged')} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#f59e0b20',color:'#f59e0b',border:'1px solid #f59e0b50',borderRadius:6}}>已观察</button>
                       </div></div>))}</>)}

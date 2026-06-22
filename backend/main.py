@@ -503,12 +503,16 @@ from datetime import date as _dt, datetime as _datetime
 def run_daily_decisions(session: Session = Depends(get_session)):
     today = _dt.today().isoformat()
     assets = session.exec(select(Asset)).all()
-    results = []
+    candidates = []
+
+    # Phase 1: Collect candidate decisions
     for asset in assets:
         from services.market import get_strategy_advice, risk_guard
         from services.value_dca import evaluate_data_layer, evaluate_price_layer, evaluate_risk_layer
         mdata = get_strategy_advice(asset.code)
-        if mdata.get("action") == "ERROR": results.append({"fund_code": asset.code, "status": "API_ERROR"}); continue
+        if mdata.get("action") == "ERROR":
+            candidates.append({"fund_code": asset.code, "fund_name": asset.name, "system_status": "API_ERROR", "strategy_action": "review_required", "recommended_amount": None, "candidate_amount": None, "error": True})
+            continue
         dev_pct = (mdata["current_price"] - mdata["ma200"]) / mdata["ma200"] if mdata["ma200"] > 0 else 0
         passed, errors = risk_guard(nav=mdata.get("current_price"), ma200=mdata.get("ma200"))
         src = mdata.get("source", ""); trusted = src.lower() != "mock"
@@ -520,23 +524,57 @@ def run_daily_decisions(session: Session = Depends(get_session)):
         sa = "review_required" if ss == "BLOCKED" else ("take_profit_watch" if grid > 1 else ("dynamic_dca" if grid < -2 else ("observe" if mdata.get("suggested_amount", 0) == 0 else "fixed_dca")))
         ap = "hide_amount" if ss == "BLOCKED" else ("show_recommended_amount" if passed else "audit_only")
         rec = mdata.get("suggested_amount") if ap == "show_recommended_amount" else None
-        trace = _json.dumps({"dev_pct": dev_pct, "grid_pos": grid, "computed_amount": mdata.get("suggested_amount", 0), "risk_guard_passed": passed, "source": src})
-        existing = session.exec(select(DailyDecision).where(DailyDecision.date == today, DailyDecision.fund_code == asset.code)).first()
-        if existing:
-            existing.system_status=ss; existing.strategy_action=sa; existing.recommended_amount=rec
-            existing.amount_permission=ap; existing.reason_summary=f"grid={grid:.1f}"
-            existing.risk_reasons="; ".join(errors); existing.signal_ready=data_layer.status=="READY"
-            existing.price_position=price_layer.status; existing.risk_guard_passed=passed
-            existing.source=src; existing.trusted=trusted; existing.calculation_trace=trace
-            session.add(existing)
+        candidates.append({
+            "fund_code": asset.code, "fund_name": asset.name,
+            "system_status": ss, "strategy_action": sa,
+            "recommended_amount": rec, "candidate_amount": rec,
+            "amount_permission": ap, "dev_pct": dev_pct, "grid_pos": grid,
+            "reason_summary": f"grid={grid:.1f}", "risk_reasons": "; ".join(errors),
+            "signal_ready": data_layer.status == "READY", "price_position": price_layer.status,
+            "risk_guard_passed": passed, "source": src, "trusted": trusted,
+            "trace": _json.dumps({"dev_pct": dev_pct, "grid_pos": grid, "computed_amount": mdata.get("suggested_amount", 0), "risk_guard_passed": passed, "source": src}),
+            "error": False,
+        })
+
+    # Phase 2: Apply exposure guard
+    from services.exposure_guard import apply_exposure_guard, classify_theme
+    viable = [c for c in candidates if not c["error"]]
+    if len(viable) > 1:
+        apply_exposure_guard(viable, session)
+
+    # Phase 3: Write to DB
+    results = []
+    for c in candidates:
+        if c.get("error"):
+            results.append({"fund_code": c["fund_code"], "status": "API_ERROR"})
+            continue
+        existing = session.exec(select(DailyDecision).where(DailyDecision.date == today, DailyDecision.fund_code == c["fund_code"])).first()
+        f = existing if existing else DailyDecision(date=today, fund_code=c["fund_code"], fund_name=c["fund_name"])
+        f.system_status = c["system_status"]; f.strategy_action = c["strategy_action"]
+        f.recommended_amount = c.get("recommended_amount")
+        f.amount_permission = c.get("amount_permission", "hide_amount")
+        f.reason_summary = c.get("reason_summary", "")
+        f.risk_reasons = c.get("risk_reasons", "")
+        f.signal_ready = c.get("signal_ready", False)
+        f.price_position = c.get("price_position", "normal_position")
+        f.risk_guard_passed = c.get("risk_guard_passed", True)
+        f.source = c.get("source", ""); f.trusted = c.get("trusted", True)
+        f.calculation_trace = c.get("trace", "{}")
+        # v0.8.3 exposure fields
+        f.candidate_amount = c.get("candidate_amount")
+        f.final_amount = c.get("recommended_amount")
+        f.amount_source = c.get("amount_source", "strategy")
+        f.exposure_status = c.get("exposure_status", "PASS")
+        f.exposure_reasons = c.get("exposure_reasons", "")
+        f.theme_bucket = c.get("theme_bucket", classify_theme(c.get("fund_name", "")))
+        f.downgraded_from_action = c.get("downgraded_from_action", "")
+        f.downgrade_reason = c.get("downgrade_reason", "")
+        if not existing:
+            session.add(f)
         else:
-            session.add(DailyDecision(date=today, fund_code=asset.code, fund_name=asset.name,
-                system_status=ss, strategy_action=sa, recommended_amount=rec, amount_permission=ap,
-                reason_summary=f"grid={grid:.1f}", risk_reasons="; ".join(errors),
-                signal_ready=data_layer.status=="READY", price_position=price_layer.status,
-                risk_guard_passed=passed, source=src, trusted=trusted, calculation_trace=trace))
+            session.add(f)
         session.commit()
-        results.append({"fund_code": asset.code, "system_status": ss, "strategy_action": sa})
+        results.append({"fund_code": c["fund_code"], "system_status": c["system_status"], "strategy_action": c["strategy_action"], "downgraded": bool(c.get("downgrade_reason"))})
     return {"ok": True, "date": today, "count": len(results), "created": sum(1 for r in results if r.get("status") != "API_ERROR"), "results": results}
 
 

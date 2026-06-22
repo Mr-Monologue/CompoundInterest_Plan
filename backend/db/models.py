@@ -190,6 +190,16 @@ class DailyDecision(SQLModel, table=True):
     created_by: str = "scheduler"
     created_at: datetime = Field(default_factory=datetime.now)
 
+    # v0.8.3 Exposure guard
+    candidate_amount: Optional[float] = None    # original strategy amount
+    final_amount: Optional[float] = None        # after exposure guard
+    amount_source: str = "strategy"             # strategy / exposure_guard / cap
+    exposure_status: str = "PASS"               # PASS / WATCH / REVIEW_REQUIRED / BLOCKED
+    exposure_reasons: str = ""
+    theme_bucket: str = "未分类"
+    downgraded_from_action: str = ""            # original action before downgrade
+    downgrade_reason: str = ""
+
 
 class UserDecision(SQLModel, table=True):
     """用户对每日操作计划的执行记录"""
