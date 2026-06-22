@@ -55,7 +55,8 @@ function App() {
   const fetchDailyDecisions = () => {
     fetch('http://127.0.0.1:9090/api/decision/today')
       .then(r => r.json())
-      .then(data => setDailyDecisions(data || []));
+      .then(data => setDailyDecisions(Array.isArray(data) ? data : []))
+      .catch(() => setDailyDecisions([]));
   };
 
   const handleOpenDailyPlan = () => { fetchDailyDecisions(); setShowDailyPlan(true); };
@@ -224,7 +225,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {showDailyPlan && (
+      {showDailyPlan && (Array.isArray(dailyDecisions) ? (
         <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.85)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
           <div style={{background:'#18181b', border:'1px solid #333', borderRadius:16, width:640, maxHeight:'90vh', overflow:'auto', padding:28, boxShadow:'0 25px 50px -12px rgba(0,0,0,0.5)'}}>
             <div style={{display:'flex', justifyContent:'space-between', marginBottom:16}}>
@@ -277,7 +278,7 @@ function App() {
             <button onClick={()=>setShowDailyPlan(false)} className="btn btn-secondary" style={{width:'100%', marginTop:12, height:40}}>关闭</button>
           </div>
         </div>
-      )}
+      ) : null)}
 
       <div className="sidebar">
         <div className="brand"><div style={{width:20, height:20, background:'var(--primary)', borderRadius:4}}></div>RevvInvest</div>
