@@ -492,25 +492,6 @@ if os.path.exists(ASSETS_DIR):
     app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 
-# 3. 🔥 核心修复：处理根路径 "/" 和所有其他前端路由 🔥
-# 注意：这个函数必须放在所有 @app.get("/api/...") 之后！
-@app.get("/{full_path:path}")
-async def serve_frontend(full_path: str):
-    # 如果是 API 请求但没匹配到上面的接口，返回 404
-    if full_path.startswith("api/"):
-        return {"error": "API endpoint not found"}
-
-    # 否则，一律返回 index.html (让 React 路由去处理页面跳转)
-    index_file = os.path.join(DIST_DIR, "index.html")
-    if os.path.exists(index_file):
-        return FileResponse(index_file)
-    else:
-        return {
-            "error": "前端文件未找到",
-            "tip": "请确保你已经执行了 'npm run build' 并将 'dist' 文件夹放到了 'backend' 目录下。",
-        }
-
-
 # ── v0.8.2 Daily Decision APIs ────────────────────
 
 from db.models import DailyDecision, UserDecision
@@ -605,5 +586,24 @@ def get_decision_history(days: int = 7, session: Session = Depends(get_session))
     return session.exec(select(DailyDecision).where(DailyDecision.date >= start).order_by(DailyDecision.date.desc())).all()
 
 
+# 3. 🔥 核心修复：处理根路径 "/" 和所有其他前端路由 🔥
+# 注意：这个函数必须放在所有 @app.get("/api/...") 之后！
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    # 如果是 API 请求但没匹配到上面的接口，返回 404
+    if full_path.startswith("api/"):
+        return {"error": "API endpoint not found"}
+
+    # 否则，一律返回 index.html (让 React 路由去处理页面跳转)
+    index_file = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    else:
+        return {
+            "error": "前端文件未找到",
+            "tip": "请确保你已经执行了 'npm run build' 并将 'dist' 文件夹放到了 'backend' 目录下。",
+        }
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=9090)
+    uvicorn.run(app, host="0.0.0.0", port=9091)
