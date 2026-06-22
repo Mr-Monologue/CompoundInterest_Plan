@@ -49,6 +49,28 @@ function App() {
 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [dailyDecisions, setDailyDecisions] = useState<any[]>([]);
+  const [showDailyPlan, setShowDailyPlan] = useState(false);
+
+  const fetchDailyDecisions = () => {
+    fetch('http://127.0.0.1:9090/api/decision/today')
+      .then(r => r.json())
+      .then(data => setDailyDecisions(data || []));
+  };
+
+  const handleOpenDailyPlan = () => { fetchDailyDecisions(); setShowDailyPlan(true); };
+
+  const handleGenerateToday = () => {
+    fetch('http://127.0.0.1:9090/api/decision/run-daily', { method: 'POST' })
+      .then(r => r.json()).then(() => fetchDailyDecisions());
+  };
+
+  const handleUserAction = (id: number, action: string, amount?: number, reason?: string) => {
+    fetch(`http://127.0.0.1:9090/api/decision/${id}/user-action`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action, actual_amount: amount, skip_reason: reason || ''}),
+    }).then(() => fetchDailyDecisions());
+  };
   const [showHistory, setShowHistory] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   
@@ -202,25 +224,57 @@ function App() {
 
   return (
     <div className="app-container">
-      {showSuggestions && (
-        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.8)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
-          <div style={{background:'#18181b', border:'1px solid #333', borderRadius:16, width:500, padding:24, boxShadow:'0 25px 50px -12px rgba(0, 0, 0, 0.5)'}}>
-            <div style={{display:'flex', justifyContent:'space-between', marginBottom:20}}>
-              <h3 style={{margin:0, display:'flex', alignItems:'center', gap:10, fontSize:18}}><FileText size={20} color="var(--primary)"/> 本周操作建议</h3>
-              <button onClick={()=>setShowSuggestions(false)} style={{background:'none', border:'none', color:'#666', cursor:'pointer'}}><Trash2 size={20}/></button>
+      {showDailyPlan && (
+        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.85)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000}}>
+          <div style={{background:'#18181b', border:'1px solid #333', borderRadius:16, width:640, maxHeight:'90vh', overflow:'auto', padding:28, boxShadow:'0 25px 50px -12px rgba(0,0,0,0.5)'}}>
+            <div style={{display:'flex', justifyContent:'space-between', marginBottom:16}}>
+              <div><h3 style={{margin:0, fontSize:20}}>📋 今日操作计划</h3><div style={{fontSize:12, color:'#71717a', marginTop:4}}>由系统自动分析生成，仅供人工复核，不会自动交易。</div></div>
+              <button onClick={()=>setShowDailyPlan(false)} style={{background:'none', border:'none', color:'#666', cursor:'pointer', fontSize:20}}>✕</button>
             </div>
-            <div style={{maxHeight:'50vh', overflowY:'auto', marginBottom:20}}>
-              {suggestions.length===0?<div style={{textAlign:'center', color:'#666', padding:20}}>暂无建议</div>:suggestions.map((item:any,i:number)=>(
-                <div key={i} style={{display:'flex', justifyContent:'space-between', padding:16, marginBottom:10, background:item.amt>0?'rgba(16,185,129,0.08)':'rgba(255,255,255,0.03)', borderRadius:12, border: item.amt>0?'1px solid rgba(16,185,129,0.2)':'1px solid transparent'}}>
-                  <div><div style={{fontWeight:600, fontSize:15, color:'#f4f4f5'}}>{item.name}</div><div style={{fontSize:13, color:item.amt>0?'#34d399':'#71717a', marginTop:4}}>{item.msg}</div></div>
-                  {item.amt>0 && <div style={{fontSize:20, fontWeight:'bold', color:'var(--success)', fontFamily:'var(--font-mono)'}}>¥{item.amt}</div>}
-                </div>
-              ))}
+            {dailyDecisions.length===0 ? (
+              <div style={{textAlign:'center', padding:30}}>
+                <div style={{color:'#71717a', marginBottom:16}}>今日操作计划尚未生成</div>
+                <button onClick={handleGenerateToday} className="btn btn-primary" style={{padding:'10px 24px'}}>生成今日计划</button>
+              </div>
+            ) : (
+              (() => {
+                const act = dailyDecisions.filter(d => ['fixed_dca','dynamic_dca','buy'].includes(d.strategy_action) && d.system_status==='PASS');
+                const obs = dailyDecisions.filter(d => ['observe','stop_dynamic','take_profit_watch'].includes(d.strategy_action));
+                const blk = dailyDecisions.filter(d => d.system_status==='BLOCKED'||d.system_status==='ANOMALY'||d.system_status==='API_ERROR');
+                const noa = dailyDecisions.filter(d => ![...act,...obs,...blk].includes(d));
+                return (<>
+                  <div style={{display:'flex', gap:10, marginBottom:20, flexWrap:'wrap'}}>
+                    {[{l:'需处理',n:act.length,c:'#10b981'},{l:'观察',n:obs.length,c:'#f59e0b'},{l:'BLOCKED',n:blk.length,c:'#ef4444'},{l:'无需操作',n:noa.length,c:'#6b7280'}].map(s=>(<div key={s.l} style={{flex:1,minWidth:70,textAlign:'center',padding:10,background:'#27272a',borderRadius:8}}><div style={{fontSize:20,fontWeight:700,color:s.c}}>{s.n}</div><div style={{fontSize:11,color:'#71717a'}}>{s.l}</div></div>))}
+                    <div style={{flex:1,minWidth:90,textAlign:'center',padding:10,background:'#27272a',borderRadius:8}}><div style={{fontSize:20,fontWeight:700,color:'var(--primary)'}}>¥{act.reduce((s,d)=>s+(d.recommended_amount||0),0)}</div><div style={{fontSize:11,color:'#71717a'}}>建议总额</div></div>
+                  </div>
+                  {act.length>0 && (<><div style={{fontSize:13,fontWeight:600,color:'#10b981',marginBottom:8}}>需要处理</div>
+                    {act.map(d=>(<div key={d.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:12,marginBottom:8,background:'rgba(16,185,129,0.06)',borderRadius:10,border:'1px solid rgba(16,185,129,0.15)'}}>
+                      <div><div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div><div style={{fontSize:12,color:'#71717a'}}>{d.reason_summary}</div></div>
+                      <div style={{display:'flex',alignItems:'center',gap:12}}><span style={{fontWeight:700,color:'#10b981'}}>¥{d.recommended_amount||0}</span>
+                        <button onClick={()=>handleUserAction(d.id,'executed',d.recommended_amount)} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#10b98120',color:'#10b981',border:'1px solid #10b98150',borderRadius:6}}>已完成</button>
+                        <button onClick={()=>{const r=prompt('跳过原因');if(r)handleUserAction(d.id,'skipped',undefined,r)}} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#f59e0b20',color:'#f59e0b',border:'1px solid #f59e0b50',borderRadius:6}}>跳过</button>
+                      </div></div>))}</>)}
+                  {obs.length>0 && (<><div style={{fontSize:13,fontWeight:600,color:'#f59e0b',marginBottom:8,marginTop:16}}>观察项</div>
+                    {obs.map(d=>(<div key={d.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:12,marginBottom:8,background:'rgba(245,158,11,0.04)',borderRadius:10,border:'1px solid rgba(245,158,11,0.1)'}}>
+                      <div><div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div><div style={{fontSize:12,color:'#71717a'}}>{d.reason_summary}</div></div>
+                      <div style={{display:'flex',alignItems:'center',gap:12}}><span style={{color:'#71717a'}}>{d.recommended_amount===0?'¥0 不新增':'不新增'}</span>
+                        <button onClick={()=>handleUserAction(d.id,'acknowledged')} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#f59e0b20',color:'#f59e0b',border:'1px solid #f59e0b50',borderRadius:6}}>已观察</button>
+                      </div></div>))}</>)}
+                  {blk.length>0 && (<><div style={{fontSize:13,fontWeight:600,color:'#ef4444',marginBottom:8,marginTop:16}}>⛔ BLOCKED</div>
+                    {blk.map(d=>(<div key={d.id} style={{padding:12,marginBottom:8,background:'rgba(239,68,68,0.04)',borderRadius:10,border:'1px solid rgba(239,68,68,0.15)'}}>
+                      <div style={{fontWeight:600,color:'#ef4444'}}>{d.fund_name} ({d.fund_code})</div>
+                      <div style={{fontSize:12,color:'#ef4444',marginTop:4}}>不输出金额</div>
+                      {d.risk_reasons && <div style={{fontSize:11,color:'#71717a',marginTop:4}}>原因: {d.risk_reasons}</div>}
+                    </div>))}</>)}
+                  {noa.length>0 && <details style={{marginTop:16,color:'#6b7280'}}><summary style={{fontSize:13,cursor:'pointer'}}>无需操作 ({noa.length})</summary>
+                    {noa.map(d=>(<div key={d.id} style={{padding:8,fontSize:12}}>{d.fund_name} — {d.system_status}</div>))}</details>}
+                </>);
+              })()
+            )}
+            <div style={{fontSize:11,color:'#52525b',background:'#27272a',padding:12,borderRadius:8,marginTop:16,lineHeight:1.6}}>
+              1. 本计划仅供人工复核，不会自动交易。<br/>2. 若已在平台完成买入，请点击对应基金的「已完成」。<br/>3. 若选择不执行，请点击「跳过」并记录原因。<br/>4. BLOCKED 项不得交易，需先查看阻断原因。
             </div>
-            <div style={{fontSize:12, color:'#71717a', background:'#27272a', padding:12, borderRadius:8, lineHeight:1.6}}>
-              💡 <b>操作指南：</b><br/>1. 系统仅提供建议，请去支付宝/券商手动交易。<br/>2. 交易完成后，请点击对应基金的“📝 记一笔”进行记账。<br/>3. 记账时勾选“从资金池扣款”，系统余额才会同步扣减。
-            </div>
-            <button onClick={()=>setShowSuggestions(false)} className="btn btn-primary" style={{width:'100%', marginTop:20, height:44, fontSize:15}}>我已知晓，去操作</button>
+            <button onClick={()=>setShowDailyPlan(false)} className="btn btn-secondary" style={{width:'100%', marginTop:12, height:40}}>关闭</button>
           </div>
         </div>
       )}
@@ -231,7 +285,7 @@ function App() {
           <button className="btn-icon" style={{position: 'absolute', top: 10, right: 10}} onClick={() => setShowConfig(!showConfig)}><Settings size={14} /></button>
           <div><div className="global-label">Investable Pool</div><div className="global-value" style={{color: poolState.pool_balance < 100 ? '#ef4444' : '#fff'}}>¥ {Number(poolState.pool_balance).toFixed(0)}</div></div>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:5}}><div className="global-sub">基准: ¥{poolState.base_investment}/次</div></div>
-          <div style={{display: 'flex', gap: 8, marginTop: 15}}><button onClick={() => setShowDeposit(!showDeposit)} className="btn btn-secondary" style={{flex:1, justifyContent:'center'}}>+ 充值</button><button onClick={handleRunAll} className="btn btn-primary" style={{flex:1, justifyContent:'center'}}>运行策略分析</button></div>
+          <div style={{display: 'flex', gap: 8, marginTop: 15}}><button onClick={() => setShowDeposit(!showDeposit)} className="btn btn-secondary" style={{flex:1, justifyContent:'center'}}>+ 充值</button><button onClick={handleOpenDailyPlan} className="btn btn-primary" style={{flex:1, justifyContent:'center'}}>今日计划</button></div>
           {showDeposit && (<div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}><input className="input-dark" placeholder="金额" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} style={{marginBottom: 5}} /><button onClick={handleDeposit} className="btn btn-primary" style={{width: '100%', fontSize: 12, padding: 6}}>确认充值</button></div>)}
           {showConfig && (<div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>校准余额:</div><input className="input-dark" value={newBalance} onChange={e => setNewBalance(e.target.value)} type="number" style={{marginBottom: 5}} /><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>每份基准:</div><input className="input-dark" value={newBase} onChange={e => setNewBase(e.target.value)} type="number" style={{marginBottom: 5}} /><button onClick={handleUpdateConfig} className="btn btn-secondary" style={{width: '100%', fontSize: 12, padding: 6}}>保存</button></div>)}
         </div>
