@@ -26,7 +26,15 @@ function App() {
 
   const [poolState, setPoolState] = useState({ pool_balance: 0, base_investment: 200 });
   const [industryData, setIndustryData] = useState<any[]>([]); 
-  const [fundAllocData, setFundAllocData] = useState<any[]>([]);
+  const [fundAllocData, setFundAllocData] = useState<{name:string, value:number}[]>([]);
+  const [framework, setFramework] = useState<any>(null);
+
+  // Fetch strategy framework on advice load
+  useEffect(() => {
+    if (!selectedAsset) return;
+    fetch(`http://127.0.0.1:9090/api/strategy/framework/${selectedAsset.code}`)
+      .then(r => r.json()).then(setFramework).catch(() => {});
+  }, [selectedAsset]);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [showTransForm, setShowTransForm] = useState(false);
@@ -244,6 +252,28 @@ function App() {
             </div>
 
             <div style={{display:'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 24, gridColumn: 'span 12'}}>
+              {/* v0.8 Strategy Layers */}
+              {framework && !framework.error && (
+              <div className="card" style={{ gridColumn: 'span 12', minHeight: 180 }}>
+                <div className="card-header"><div className="card-title"><Layers size={18}/> 策略分层视图</div><div style={{fontSize:11, color:'var(--text-dim)'}}>VALUE-DCA FRAMEWORK</div></div>
+                <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                  {Object.entries(framework.layers||{}).map(([key, l]:[string,any]) => {
+                    const colors: Record<string,string> = {READY:'#10b981', PASS:'#10b981', BLOCKED:'#ef4444', STOP:'#f97316', REVIEW:'#f97316', triggered:'#f59e0b', waiting_trigger:'#3b82f6', unknown:'#6b7280', disabled_by_valuation:'#6b7280', normal_position:'#10b981', low_position:'#3b82f6', high_position:'#f97316'};
+                    const color = colors[l.status] || '#6b7280';
+                    const labels: Record<string,string> = {data:'数据', thesis:'资产', valuation:'估值', price:'价格', four_percent:'4%触发', amount:'资金', risk:'风控'};
+                    return (
+                      <div key={key} style={{flex:'1 1 120px', minWidth:100, background:'var(--bg-panel)', borderRadius:8, padding:10, borderLeft:`3px solid ${color}`}}>
+                        <div style={{fontSize:10, color:'var(--text-dim)', marginBottom:4}}>{labels[key]||key}层</div>
+                        <div style={{fontSize:13, fontWeight:600, color}}>{l.status}</div>
+                        {l.reason && <div style={{fontSize:10, color:'var(--text-muted)', marginTop:2}}>{l.reason}</div>}
+                        {l.blocking && <div style={{fontSize:9, color:'#ef4444', marginTop:2}}>⛔ 阻断</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{marginTop:10, fontSize:11, color:'var(--text-dim)'}}>💡 估值层待接入 | 4%触发层dry_run | 风控层决定金额展示</div>
+              </div>
+              )}
               <div className="card" style={{ gridColumn: 'span 6', minHeight: 400 }}>
                 <div className="card-header"><div className="card-title"><PieChartIcon size={18}/> 穿透行业分布</div><div style={{fontSize:11, color:'var(--text-dim)'}}>UNDERLYING ASSETS</div></div>
                 <div style={{flex:1, display:'flex', flexDirection:'column', height:'100%'}}>
