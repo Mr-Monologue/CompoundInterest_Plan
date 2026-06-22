@@ -137,6 +137,7 @@ function App() {
     fixed_dca: "固定定投", dynamic_dca: "动态定投", observe: "观察 / 暂停新增",
     stop_dynamic: "暂停动态部分", take_profit_watch: "止盈观察", review_required: "需人工复核"
   };
+  const fetchReport = (code: string) => { fetch(`http://127.0.0.1:9090/api/strategy/report/${code}`).then(res => res.json()).then(data => setReport(data.report)); };
   const fetchTransactions = (code: string) => { fetch(`http://127.0.0.1:9090/api/transactions/${code}`).then(res => res.json()).then(setTransactions); };
 
   const handleSelectAsset = (asset: Asset) => {
