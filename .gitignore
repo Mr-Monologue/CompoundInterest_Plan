@@ -24,3 +24,4 @@ build/
 
 hermes/runtime/.process_state.json
 hermes/runtime/.scheduler_heartbeat.json
+logs/
