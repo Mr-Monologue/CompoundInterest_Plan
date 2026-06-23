@@ -38,7 +38,7 @@ start "SmartInvest Backend [Python]" cmd /k "cd backend && venv\Scripts\activate
 
 :: 2. 启动前端 (React/Vite)
 
-echo [2/3] 正在加载可视化界面 (Port: 5173)...
+echo [2/3] 正在加载可视化界面 (Port: 0731)...
 
 start "SmartInvest Frontend [React]" cmd /k "cd frontend && npm run dev"
 
@@ -56,7 +56,7 @@ timeout /t 4 >nul
 
 :: 启动默认浏览器访问
 
-start http://localhost:5173
+start http://localhost:731
 
 
 

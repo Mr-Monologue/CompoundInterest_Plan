@@ -4,8 +4,8 @@ services:
     type: http
     command: python -m backend.main
     host: 127.0.0.1
-    port: 9500
-    health_url: http://127.0.0.1:9500/api/health
+    port: 9600
+    health_url: http://127.0.0.1:9600/api/health
     cwd: .
     log_path: logs/backend.log
     required: true
