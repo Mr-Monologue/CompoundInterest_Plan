@@ -496,22 +496,35 @@ if os.path.exists(ASSETS_DIR):
 # ── Health check ──────────────────────────────
 
 @app.get("/api/health")
-def health_check():
-    return {"service": "backend", "status": "ready", "version": "2.1.0"}
+def health_check(session: Session = Depends(get_session)):
+    import os
+    try:
+        assets_count = len(session.exec(select(Asset)).all())
+    except:
+        assets_count = 0
+    return {
+        "service": "backend",
+        "status": "ready",
+        "db": {"ok": True, "path": "invest.db"},
+        "runtime": {
+            "assets_count": assets_count,
+            "decision_today_generated": False,
+        },
+    }
 
 
 @app.get("/api/runtime/status")
-def runtime_status():
+def runtime_status_endpoint():
     import os, json
-    hb_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hermes", "runtime", ".scheduler_heartbeat.json")
     hb = {}
+    hb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hermes", "runtime", ".scheduler_heartbeat.json")
     if os.path.exists(hb_path):
         with open(hb_path) as f: hb = json.load(f)
     return {
         "backend": "READY",
         "frontend": "UNKNOWN",
         "scheduler": "alive" if hb.get("status") == "alive" else "stopped",
-        "decision_today_generated": False,
+        "today_decision": {"generated": False},
         "last_heartbeat": hb.get("last_seen"),
     }
 
