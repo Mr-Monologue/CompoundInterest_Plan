@@ -42,10 +42,8 @@ def get_industry_exposure(session) -> Dict[str, float]:
     """Get current portfolio industry exposure percentages."""
     from services.holdings import get_fund_industry_vector
     from db.models import Asset
-
-    assets = session.exec(Asset.__class__.__getattr__("select")(Asset)).all() if hasattr(Asset, '__table__') else []
-    # Actually just use the select import
     from sqlmodel import select as _sel
+
     assets = session.exec(_sel(Asset)).all()
 
     total_weight = 0.0

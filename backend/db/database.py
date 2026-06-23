@@ -13,7 +13,6 @@ def create_db_and_tables():
         inspector = inspect(engine)
         tables = inspector.get_table_names()
 
-        # Migrate transaction: add fee column if missing
         if "transaction" in tables:
             cols = [c["name"] for c in inspector.get_columns("transaction")]
             if "fee" not in cols:
@@ -21,7 +20,6 @@ def create_db_and_tables():
                     conn.execute(text('ALTER TABLE "transaction" ADD COLUMN fee FLOAT DEFAULT 0.0'))
                     conn.commit()
 
-        # Migrate planstate: add missing columns
         if "planstate" in tables:
             cols = [c["name"] for c in inspector.get_columns("planstate")]
             with engine.connect() as conn:
@@ -31,7 +29,6 @@ def create_db_and_tables():
                     conn.execute(text("ALTER TABLE planstate ADD COLUMN base_investment FLOAT DEFAULT 200.0"))
                 conn.commit()
 
-        # Migrate asset: add max_weight_limit
         if "asset" in tables:
             cols = [c["name"] for c in inspector.get_columns("asset")]
             if "max_weight_limit" not in cols:
@@ -39,7 +36,6 @@ def create_db_and_tables():
                     conn.execute(text("ALTER TABLE asset ADD COLUMN max_weight_limit FLOAT DEFAULT 0.2"))
                     conn.commit()
 
-        # Migrate dailyplan: add grid_pos, created_by, idempotency_key
         if "dailyplan" in tables:
             cols = [c["name"] for c in inspector.get_columns("dailyplan")]
             with engine.connect() as conn:
@@ -49,6 +45,35 @@ def create_db_and_tables():
                     conn.execute(text("ALTER TABLE dailyplan ADD COLUMN created_by TEXT DEFAULT 'scheduler'"))
                 if "idempotency_key" not in cols:
                     conn.execute(text("ALTER TABLE dailyplan ADD COLUMN idempotency_key TEXT"))
+                conn.commit()
+
+        # v0.8.3/v0.8.4: DailyDecision + UserDecision new columns
+        if "dailydecision" in tables:
+            cols = [c["name"] for c in inspector.get_columns("dailydecision")]
+            new_cols = [
+                ("candidate_amount", "FLOAT"), ("final_amount", "FLOAT"),
+                ("amount_source", "TEXT DEFAULT 'strategy'"), ("exposure_status", "TEXT DEFAULT 'PASS'"),
+                ("exposure_reasons", "TEXT DEFAULT ''"), ("theme_bucket", "TEXT DEFAULT '未分类'"),
+                ("downgraded_from_action", "TEXT DEFAULT ''"), ("downgrade_reason", "TEXT DEFAULT ''"),
+                ("downgrade_from_fund", "TEXT DEFAULT ''"), ("candidate_action", "TEXT DEFAULT ''"),
+                ("final_action", "TEXT DEFAULT ''"), ("exposure_guard_applied", "INTEGER DEFAULT 0"),
+                ("industry_exposure_before", "TEXT DEFAULT ''"), ("classification_source", "TEXT DEFAULT ''"),
+                ("classification_confidence", "TEXT DEFAULT ''"), ("holding_date", "TEXT DEFAULT ''"),
+                ("stale_holdings_warning", "INTEGER DEFAULT 0"),
+            ]
+            with engine.connect() as conn:
+                for col_name, col_type in new_cols:
+                    if col_name not in cols:
+                        conn.execute(text(f"ALTER TABLE dailydecision ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+
+        if "userdecision" in tables:
+            cols = [c["name"] for c in inspector.get_columns("userdecision")]
+            with engine.connect() as conn:
+                if "override_exposure_guard" not in cols:
+                    conn.execute(text("ALTER TABLE userdecision ADD COLUMN override_exposure_guard INTEGER DEFAULT 0"))
+                if "override_reason" not in cols:
+                    conn.execute(text("ALTER TABLE userdecision ADD COLUMN override_reason TEXT DEFAULT ''"))
                 conn.commit()
 
     SQLModel.metadata.create_all(engine)
