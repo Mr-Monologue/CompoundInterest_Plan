@@ -319,6 +319,11 @@ function App() {
         <div className="section-header"><span>Watchlist</span><button className="btn-icon" onClick={() => setShowAddForm(!showAddForm)}><Plus size={14} /></button></div>
         {showAddForm && (<div style={{padding:12, background:'var(--bg-panel)', borderRadius:12, marginBottom:10, border:'1px solid var(--border-active)'}}><input className="input-dark" style={{marginBottom:8}} placeholder="代码" value={newCode} onChange={e=>setNewCode(e.target.value)} onBlur={e=>handleDetectFund(e.target.value)} /><input className="input-dark" style={{marginBottom:8}} placeholder="名称（自动识别）" value={newName} onChange={e=>setNewName(e.target.value)} /><button className="btn btn-primary" style={{width:'100%', justifyContent:'center'}} onClick={handleAddAsset}>确认</button></div>)}
         <div className="asset-list">{[...new Map(assets.map(a => [a.code, a])).values()].map(asset => (<div key={asset.code} className={`asset-item ${selectedAsset?.code === asset.code ? 'active' : ''}`} onClick={() => handleSelectAsset(asset)}><div><div className="name">{asset.name}</div><div className="code">{asset.code}</div></div><button className="btn-icon" onClick={(e) => handleDeleteAsset(e, asset.id)}><Trash2 size={14}/></button></div>))}</div>
+        <div className="section-header"><span>Runtime Status</span></div>
+        <div style={{padding:10, background:'var(--bg-panel)', borderRadius:10, marginBottom:16, fontSize:12}}>
+          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Backend</span><span style={{color:'#10b981'}}>✅ READY</span></div>
+          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Frontend</span><span style={{color:'#10b981'}}>✅ READY</span></div>
+        </div>
       </div>
 
       <div className="main-content">
@@ -485,11 +490,4 @@ function App() {
 }
 
 
-        <div className="section-header"><span>Runtime Status</span></div>
-        <div style={{padding:10, background:'var(--bg-panel)', borderRadius:10, marginBottom:16, fontSize:12}}>
-          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Backend</span><span style={{color:'#10b981'}}>✅ READY</span></div>
-          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Frontend</span><span style={{color:'#10b981'}}>✅ READY</span></div>
-          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Scheduler</span><span style={{color:dailyDecisions.length > 0 ? '#10b981':'#f59e0b'}}>{dailyDecisions.length > 0 ? '✅ READY' : '⏳ WAITING'}</span></div>
-        </div>
-
-export default App;
+export default App
