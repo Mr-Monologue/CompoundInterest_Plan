@@ -188,6 +188,7 @@ class DailyDecision(SQLModel, table=True):
     # Audit
     calculation_trace: str = ""  # JSON string
     created_by: str = "scheduler"
+    decision_source: str = "scheduler"           # scheduler/manual/exposure_demo
     created_at: datetime = Field(default_factory=datetime.now)
 
     # v0.8.3 Exposure guard

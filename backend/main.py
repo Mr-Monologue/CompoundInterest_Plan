@@ -550,19 +550,19 @@ def run_exposure_demo(session: Session = Depends(get_session)):
     demo = [
         {"fund_code":"000083","fund_name":"汇添富消费行业混合","system_status":"PASS","strategy_action":"fixed_dca",
          "recommended_amount":200,"candidate_amount":200,"downgrade_reason":"",
-         "reason_summary":"正常定投","classification_source":"AKShare","classification_confidence":"high"},
+         "reason_summary":"正常定投","classification_source":"AKShare","classification_confidence":"high","decision_source":"exposure_demo"},
         {"fund_code":"001532","fund_name":"华安文体健康混合A","system_status":"PASS","strategy_action":"observe",
          "recommended_amount":0,"candidate_amount":200,"downgrade_reason":"同主题(消费)重复暴露，本周已选择 000083",
-         "candidate_action":"dynamic_dca","downgraded_from_action":"dynamic_dca","reason_summary":"","classification_source":"local_rule","classification_confidence":"medium"},
+         "candidate_action":"dynamic_dca","downgraded_from_action":"dynamic_dca","reason_summary":"","classification_source":"local_rule","classification_confidence":"medium","decision_source":"exposure_demo"},
         {"fund_code":"002340","fund_name":"富国价值优势混合A","system_status":"PASS","strategy_action":"review_required",
          "recommended_amount":None,"candidate_amount":200,"downgrade_reason":"组合总额超过上限",
-         "candidate_action":"dynamic_dca","downgraded_from_action":"dynamic_dca","exposure_status":"REVIEW_REQUIRED","classification_source":"local_rule","classification_confidence":"medium"},
+         "candidate_action":"dynamic_dca","downgraded_from_action":"dynamic_dca","exposure_status":"REVIEW_REQUIRED","classification_source":"local_rule","classification_confidence":"medium","decision_source":"exposure_demo"},
         {"fund_code":"003096","fund_name":"中欧医疗健康混合C","system_status":"PASS","strategy_action":"observe",
          "recommended_amount":0,"candidate_amount":200,"downgrade_reason":"",
-         "reason_summary":"估值层未接入，当前仅观察","classification_source":"local_rule","classification_confidence":"medium"},
+         "reason_summary":"估值层未接入，当前仅观察","classification_source":"local_rule","classification_confidence":"medium","decision_source":"exposure_demo"},
         {"fund_code":"005827","fund_name":"易方达蓝筹精选混合","system_status":"PASS","strategy_action":"observe",
          "recommended_amount":0,"candidate_amount":200,"downgrade_reason":"",
-         "reason_summary":"估值层未接入，当前仅观察","classification_source":"local_rule","classification_confidence":"medium"},
+         "reason_summary":"估值层未接入，当前仅观察","classification_source":"local_rule","classification_confidence":"medium","decision_source":"exposure_demo"},
     ]
     for c in demo:
         existing = session.exec(select(DailyDecision).where(DailyDecision.date==today,DailyDecision.fund_code==c["fund_code"])).first()

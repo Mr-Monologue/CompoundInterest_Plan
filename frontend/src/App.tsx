@@ -246,6 +246,7 @@ function App() {
               return (
                 <div style={{background:'rgba(99,102,241,0.08)', borderRadius:10, padding:12, marginBottom:16, border:'1px solid rgba(99,102,241,0.15)'}}>
                   <div style={{fontSize:12, fontWeight:600, color:'#a5b4fc', marginBottom:8}}>🔍 暴露闸门审计</div>
+                  {dailyDecisions[0]?.decision_source==='exposure_demo' && <div style={{fontSize:10,color:'#f59e0b',marginBottom:8,padding:'4px 8px',background:'rgba(245,158,11,0.1)',borderRadius:4}}>⚠️ 演示数据，仅用于验证暴露闸门，不作为真实操作计划。</div>}
                   <div style={{display:'flex', gap:16, flexWrap:'wrap', fontSize:12}}>
                     <span>原始候选: <b style={{color:'#f59e0b'}}>¥{candidateTotal}</b></span>
                     <span>最终建议: <b style={{color:'#10b981'}}>¥{finalTotal}</b></span>
