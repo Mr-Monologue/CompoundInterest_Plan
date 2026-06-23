@@ -612,6 +612,13 @@ def run_daily_decisions(session: Session = Depends(get_session)):
         f.theme_bucket = c.get("theme_bucket", classify_theme(c.get("fund_name", "")))
         f.downgraded_from_action = c.get("downgraded_from_action", "")
         f.downgrade_reason = c.get("downgrade_reason", "")
+        f.downgrade_from_fund = c.get("downgrade_from_fund", "")
+        f.candidate_action = c.get("downgraded_from_action", "") or c.get("strategy_action", "")
+        f.final_action = c.get("strategy_action", "")
+        f.exposure_guard_applied = bool(c.get("downgrade_reason") or c.get("exposure_status", "PASS") != "PASS")
+        f.classification_source = "local_rule"
+        f.classification_confidence = "medium"
+        f.holding_date = ""
         if not existing:
             session.add(f)
         else:
