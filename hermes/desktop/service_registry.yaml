@@ -1,0 +1,31 @@
+services:
+  backend:
+    name: backend
+    type: http
+    command: python -m backend.main
+    host: 127.0.0.1
+    port: 9500
+    health_url: http://127.0.0.1:9500/api/health
+    cwd: .
+    log_path: logs/backend.log
+    required: true
+
+  frontend:
+    name: frontend
+    type: http
+    command: npx vite --host 127.0.0.1 --port 731 --strictPort
+    host: 127.0.0.1
+    port: 731
+    health_url: http://127.0.0.1:731
+    cwd: frontend
+    log_path: logs/frontend.log
+    required: true
+
+  scheduler:
+    name: scheduler
+    type: heartbeat
+    command: python -m hermes.runtime.scheduler
+    heartbeat_path: hermes/runtime/.scheduler_heartbeat.json
+    cwd: .
+    log_path: logs/scheduler.log
+    required: true

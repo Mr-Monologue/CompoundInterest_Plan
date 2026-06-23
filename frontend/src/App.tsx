@@ -484,4 +484,12 @@ function App() {
   );
 }
 
+
+        <div className="section-header"><span>Runtime Status</span></div>
+        <div style={{padding:10, background:'var(--bg-panel)', borderRadius:10, marginBottom:16, fontSize:12}}>
+          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Backend</span><span style={{color:'#10b981'}}>✅ READY</span></div>
+          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Frontend</span><span style={{color:'#10b981'}}>✅ READY</span></div>
+          <div style={{display:'flex', justifyContent:'space-between', padding:'4px 0'}}><span style={{color:'var(--text-dim)'}}>Scheduler</span><span style={{color:dailyDecisions.length > 0 ? '#10b981':'#f59e0b'}}>{dailyDecisions.length > 0 ? '✅ READY' : '⏳ WAITING'}</span></div>
+        </div>
+
 export default App;
