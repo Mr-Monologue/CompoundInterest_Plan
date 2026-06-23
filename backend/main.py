@@ -542,6 +542,42 @@ import json as _json
 from datetime import date as _dt, datetime as _datetime
 
 
+# v0.8.4.2 Exposure demo — generates fixed test data
+@app.post("/api/decision/run-exposure-demo")
+def run_exposure_demo(session: Session = Depends(get_session)):
+    """Generate demo DailyDecision with candidate→final downgrade cases. Never writes transactions."""
+    today = _dt.today().isoformat()
+    demo = [
+        {"fund_code":"000083","fund_name":"汇添富消费行业混合","system_status":"PASS","strategy_action":"fixed_dca",
+         "recommended_amount":200,"candidate_amount":200,"downgrade_reason":"",
+         "reason_summary":"正常定投","classification_source":"AKShare","classification_confidence":"high"},
+        {"fund_code":"001532","fund_name":"华安文体健康混合A","system_status":"PASS","strategy_action":"observe",
+         "recommended_amount":0,"candidate_amount":200,"downgrade_reason":"同主题(消费)重复暴露，本周已选择 000083",
+         "candidate_action":"dynamic_dca","downgraded_from_action":"dynamic_dca","reason_summary":"","classification_source":"local_rule","classification_confidence":"medium"},
+        {"fund_code":"002340","fund_name":"富国价值优势混合A","system_status":"PASS","strategy_action":"review_required",
+         "recommended_amount":None,"candidate_amount":200,"downgrade_reason":"组合总额超过上限",
+         "candidate_action":"dynamic_dca","downgraded_from_action":"dynamic_dca","exposure_status":"REVIEW_REQUIRED","classification_source":"local_rule","classification_confidence":"medium"},
+        {"fund_code":"003096","fund_name":"中欧医疗健康混合C","system_status":"PASS","strategy_action":"observe",
+         "recommended_amount":0,"candidate_amount":200,"downgrade_reason":"",
+         "reason_summary":"估值层未接入，当前仅观察","classification_source":"local_rule","classification_confidence":"medium"},
+        {"fund_code":"005827","fund_name":"易方达蓝筹精选混合","system_status":"PASS","strategy_action":"observe",
+         "recommended_amount":0,"candidate_amount":200,"downgrade_reason":"",
+         "reason_summary":"估值层未接入，当前仅观察","classification_source":"local_rule","classification_confidence":"medium"},
+    ]
+    for c in demo:
+        existing = session.exec(select(DailyDecision).where(DailyDecision.date==today,DailyDecision.fund_code==c["fund_code"])).first()
+        f = existing if existing else DailyDecision(date=today,fund_code=c["fund_code"],fund_name=c["fund_name"])
+        for k,v in c.items(): setattr(f,k,v)
+        f.theme_bucket = "消费" if "消费" in c["fund_name"] else ("混合" if "混合" in c["fund_name"] else "医药")
+        f.exposure_guard_applied = bool(c.get("downgrade_reason"))
+        f.classification_source = c.get("classification_source","local_rule")
+        f.classification_confidence = c.get("classification_confidence","medium")
+        if not existing: session.add(f)
+        else: session.add(f)
+        session.commit()
+    return {"ok":True,"demo":True,"count":len(demo)}
+
+
 @app.post("/api/decision/run-daily")
 def run_daily_decisions(session: Session = Depends(get_session)):
     today = _dt.today().isoformat()

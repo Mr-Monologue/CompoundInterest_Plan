@@ -252,7 +252,19 @@ function App() {
                     <span>组合上限: ¥{cap}</span>
                     {downgraded.length>0 && <span style={{color:'#f97316'}}>降级: {downgraded.length}只</span>}
                   </div>
-                  {allObserve && finalTotal===0 && <div style={{fontSize:11, color:'#a5b4fc', marginTop:8}}>今日无可执行项：所有基金均因风控或估值未接入进入观察，本次不需要操作。</div>}
+                  {allObserve && finalTotal===0 && (()=>{
+                    const reasons:Record<string,number>={};
+                    dailyDecisions.forEach(d=>{
+                      if(d.downgrade_reason?.includes('同主题')) reasons['同主题重复暴露']=(reasons['同主题重复暴露']||0)+1;
+                      else if(d.downgrade_reason) reasons[d.downgrade_reason]=(reasons[d.downgrade_reason]||0)+1;
+                      else if(d.reason_summary?.includes('估值层')) reasons['估值层未接入']=(reasons['估值层未接入']||0)+1;
+                      else if(d.risk_reasons?.includes('Mock')) reasons['Mock数据']=(reasons['Mock数据']||0)+1;
+                      else reasons['风控观察']=(reasons['风控观察']||0)+1;
+                    });
+                    return <div style={{fontSize:11,color:'#a5b4fc',marginTop:8}}>
+                      今日无可执行项（{dailyDecisions.length}只）：{Object.entries(reasons).map(([k,v])=><span key={k}> {v}只因{k}</span>)}。最终建议金额 ¥0。
+                    </div>;
+                  })()}
                 </div>
               );
             })()}
@@ -283,11 +295,35 @@ function App() {
                         <button onClick={()=>{const r=prompt('跳过原因');if(r)handleUserAction(d.id,'skipped',undefined,r)}} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#f59e0b20',color:'#f59e0b',border:'1px solid #f59e0b50',borderRadius:6}}>跳过</button>
                       </div></div>))}</>)}
                   {obs.length>0 && (<><div style={{fontSize:13,fontWeight:600,color:'#f59e0b',marginBottom:8,marginTop:16}}>观察项</div>
-                    {obs.map(d=>(<div key={d.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:12,marginBottom:8,background:'rgba(245,158,11,0.04)',borderRadius:10,border:'1px solid rgba(245,158,11,0.1)'}}>
-                      <div><div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div><div style={{fontSize:12,color:'#71717a'}}>{d.reason_summary}</div></div>
-                      <div style={{display:'flex',alignItems:'center',gap:12}}><span style={{color:'#71717a'}}>{d.recommended_amount===0?'¥0 不新增':'不新增'}</span>
-                        <button onClick={()=>handleUserAction(d.id,'acknowledged')} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#f59e0b20',color:'#f59e0b',border:'1px solid #f59e0b50',borderRadius:6}}>已观察</button>
-                      </div></div>))}</>)}
+                    {obs.map(d=>{
+                      const reasonLabel = (()=>{
+                        if(d.downgrade_reason) return d.downgrade_reason;
+                        if(d.risk_reasons?.includes('Mock')) return 'Mock数据，禁止输出金额';
+                        if(d.valuation_state==='unknown'||!d.signal_ready) return '估值层未接入，当前仅观察';
+                        return d.reason_summary||'观察中';
+                      })();
+                      const cs = d.classification_source||'local_rule';
+                      const cf = d.classification_confidence||'medium';
+                      const candAmt = d.candidate_amount;
+                      const finAmt = d.recommended_amount;
+                      return (<div key={d.id} style={{padding:12,marginBottom:8,background:'rgba(245,158,11,0.04)',borderRadius:10,border:'1px solid rgba(245,158,11,0.1)'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div>
+                            {candAmt != null && <div style={{fontSize:11,color:'#71717a',marginTop:4}}>
+                              原始信号：{d.candidate_action||d.strategy_action} ¥{candAmt}
+                              → 最终动作：{d.strategy_action} {finAmt===0?'¥0':(finAmt!=null?'¥'+finAmt:'不输出')}
+                            </div>}
+                            <div style={{fontSize:11,color:'#f59e0b',marginTop:4}}>{reasonLabel}</div>
+                            <div style={{fontSize:10,color:'#52525b',marginTop:2}}>来源：{cs}，置信度：{cf}</div>
+                          </div>
+                          <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:12}}>
+                            <span style={{color:'#71717a',fontSize:13}}>{finAmt===0?'¥0 不新增':'不新增'}</span>
+                            <button onClick={()=>handleUserAction(d.id,'acknowledged')} className="btn" style={{fontSize:11,padding:'4px 8px',background:'#f59e0b20',color:'#f59e0b',border:'1px solid #f59e0b50',borderRadius:6}}>已观察</button>
+                          </div>
+                        </div>
+                      </div>);
+                    })}</>)}
                   {blk.length>0 && (<><div style={{fontSize:13,fontWeight:600,color:'#ef4444',marginBottom:8,marginTop:16}}>⛔ BLOCKED</div>
                     {blk.map(d=>(<div key={d.id} style={{padding:12,marginBottom:8,background:'rgba(239,68,68,0.04)',borderRadius:10,border:'1px solid rgba(239,68,68,0.15)'}}>
                       <div style={{fontWeight:600,color:'#ef4444'}}>{d.fund_name} ({d.fund_code})</div>
