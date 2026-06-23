@@ -515,14 +515,21 @@ def health_check(session: Session = Depends(get_session)):
 
 @app.get("/api/runtime/status")
 def runtime_status_endpoint():
-    import os, json
+    import os, json, socket
     hb = {}
     hb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hermes", "runtime", ".scheduler_heartbeat.json")
     if os.path.exists(hb_path):
         with open(hb_path) as f: hb = json.load(f)
+    # Check frontend port
+    frontend_ok = False
+    try:
+        s = socket.socket(); s.settimeout(1)
+        s.connect(("127.0.0.1", 731)); s.close()
+        frontend_ok = True
+    except: pass
     return {
         "backend": "READY",
-        "frontend": "UNKNOWN",
+        "frontend": "READY" if frontend_ok else "UNKNOWN",
         "scheduler": "alive" if hb.get("status") == "alive" else "stopped",
         "today_decision": {"generated": False},
         "last_heartbeat": hb.get("last_seen"),

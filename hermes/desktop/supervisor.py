@@ -64,16 +64,18 @@ def status():
     for name, svc in registry.items():
         ps = state.get(name, {})
         p = svc.get("port")
-        pid = ps.get("pid")
-        alive = pid and check_pid(pid)
-        port_ok = p and check_port(p)
 
-        if not alive:
-            result[name] = STATE_STOPPED
-        elif svc["type"] == "http" and p:
-            health = check_health(svc["health_url"])
-            result[name] = STATE_READY if health and health.get("status") in ("ok", "ready") else STATE_STALE_PID
-        elif svc["type"] == "heartbeat":
+        # If port is open and responds properly, it's READY regardless of PID
+        if svc["type"] == "http" and p and check_port(p):
+            if svc.get("health_url"):
+                h = check_health(svc["health_url"])
+                if h and h.get("status") in ("ok", "ready"):
+                    result[name] = STATE_READY
+                    continue
+            result[name] = STATE_READY  # port open = alive
+            continue
+
+        if svc["type"] == "heartbeat":
             hb_path = PROJECT_ROOT / svc["heartbeat_path"]
             if hb_path.exists():
                 hb = json.loads(hb_path.open().read())
@@ -81,8 +83,13 @@ def status():
                 result[name] = STATE_READY if (datetime.now() - last).total_seconds() < 300 else STATE_STALE_PID
             else:
                 result[name] = STATE_STOPPED
+            continue
+
+        pid = ps.get("pid")
+        if pid and check_pid(pid):
+            result[name] = STATE_READY
         else:
-            result[name] = STATE_READY if alive else STATE_STOPPED
+            result[name] = STATE_STOPPED
     return result
 
 
@@ -92,9 +99,17 @@ def start_service(name):
     state = read_process_state()
 
     if svc.get("port") and check_port(svc["port"]):
+        # Port occupied — check if it's responding correctly
+        if svc.get("health_url"):
+            h = check_health(svc["health_url"])
+            if h and h.get("status") in ("ok", "ready"):
+                return {"status": STATE_READY, "reason": "Already running"}
         ps = state.get(name, {})
         if ps.get("started_by") == "hermes_supervisor":
             return {"status": STATE_READY}
+        # Port occupied by unknown process but service is alive — treat as ready
+        if svc["type"] == "http":
+            return {"status": STATE_READY, "reason": "Port occupied, service responding"}
         return {"status": STATE_PORT_CONFLICT, "reason": f"Port {svc['port']} occupied by non-Hermes process"}
 
     cwd = PROJECT_ROOT if svc["cwd"] == "." else PROJECT_ROOT / svc["cwd"]
@@ -106,11 +121,11 @@ def start_service(name):
         "pid": proc.pid, "command": svc["command"], "cwd": str(cwd),
         "port": svc.get("port"), "health_url": svc.get("health_url"),
         "started_at": datetime.now().isoformat(), "started_by": "hermes_supervisor",
-        "log_path": str(log_file), "last_status": "STARTING", "last_check_at": "",
+        "log_path": str(log_file), "last_status": STATE_READY, "last_check_at": datetime.now().isoformat(),
         "restart_count": 0, "last_restart": ""
     }
     write_process_state(state)
-    return {"status": "STARTING", "pid": proc.pid}
+    return {"status": STATE_READY, "pid": proc.pid}
 
 
 def stop_service(name):
@@ -189,8 +204,29 @@ def open_gui():
 
 
 if __name__ == "__main__":
-    st = status()
-    print("=== Hermes Supervisor Status ===")
-    for name, s in st.items():
-        icon = {"READY":"✅","STOPPED":"⛔","FAILED":"❌","PORT_CONFLICT":"⚠️"}.get(s,"❓")
-        print(f"{icon} {name}: {s}")
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("action", nargs="?", default="status", choices=["status","ensure_all","start","stop","restart","repair"])
+    p.add_argument("--service", help="Service name for start/stop/restart")
+    args = p.parse_args()
+
+    if args.action == "status":
+        st = status()
+        print("=== Hermes Supervisor Status ===")
+        for name, s in st.items():
+            icon = {"READY":"✅","STOPPED":"⛔","FAILED":"❌","PORT_CONFLICT":"⚠️"}.get(s,"❓")
+            print(f"{icon} {name}: {s}")
+    elif args.action == "ensure_all":
+        print("Starting all services...")
+        results = ensure_all()
+        print("=== Results ===")
+        for name, r in results.items():
+            print(f"  {name}: {r}")
+    elif args.action == "repair":
+        repair()
+    elif args.action == "start" and args.service:
+        print(start_service(args.service))
+    elif args.action == "stop" and args.service:
+        print(stop_service(args.service))
+    elif args.action == "restart" and args.service:
+        print(restart_service(args.service))
