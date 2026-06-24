@@ -498,31 +498,29 @@ if os.path.exists(ASSETS_DIR):
 @app.get("/api/health")
 def health_check(session: Session = Depends(get_session)):
     import os, subprocess
-    try:
-        assets_count = len(session.exec(select(Asset)).all())
-    except:
-        assets_count = 0
-    # Git commit
+    try: assets_count = len(session.exec(select(Asset)).all())
+    except: assets_count = 0
+    try: dd_count = len(session.exec(select(DailyDecision).where(DailyDecision.date == _dt.today().isoformat())).all())
+    except: dd_count = 0
     git_commit = ""
     try:
-        r = subprocess.run("git rev-parse --short HEAD", shell=True, capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), timeout=3)
+        r = subprocess.run("git rev-parse --short HEAD 2>&1", shell=True, capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), timeout=3)
         git_commit = r.stdout.strip()
     except: pass
+    db_path = os.environ.get("COMPOUND_DB_PATH", "invest.db")
+    db_exists = os.path.exists(db_path)
+    db_size = os.path.getsize(db_path) if db_exists else 0
+    data_ready = assets_count > 0
     return {
-        "service": "backend",
-        "status": "ready",
-        "version": "v0.9.1",
+        "service": "backend", "status": "ready" if data_ready else "DEGRADED",
+        "service_ready": True, "data_ready": data_ready,
+        "version": "v0.9.4",
         "git_commit": git_commit,
-        "features": {
-            "exposure_demo": True,
-            "daily_decision": True,
-            "runtime_status": True,
-        },
-        "db": {"ok": True, "path": "invest.db"},
-        "runtime": {
-            "assets_count": assets_count,
-            "decision_today_generated": False,
-        },
+        "features": {"exposure_demo": True, "daily_decision": True},
+        "db": {"ok": db_exists, "path": db_path, "exists": db_exists,
+               "size_bytes": db_size, "asset_count": assets_count,
+               "dailydecision_count": dd_count},
+        "runtime": {"cwd": os.getcwd(), "pid": os.getpid()},
     }
 
 

@@ -41,8 +41,10 @@ def _api_post(path, timeout=10):
         return json.loads(r.read())
     except: return None
 
-def _run(cmd, cwd=None, logfile=None):
+def _run(cmd, cwd=None, logfile=None, env=None):
     kw = {"cwd": str(cwd or ROOT), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if env:
+        kw["env"] = {**os.environ, **env}
     if logfile:
         Path(logfile).parent.mkdir(parents=True, exist_ok=True)
         with open(logfile, "a") as f:
@@ -122,8 +124,10 @@ def _restart_managed_backend():
     rr = _release_port_if_fingerprint_matches(BACKEND_PORT)
     if rr.get("status") == "PORT_CONFLICT_BLOCKED":
         return rr
-    # Start fresh
-    _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
+    # Start fresh with absolute DB path
+    db_path = str(ROOT / "invest.db")
+    _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log",
+         env={"COMPOUND_DB_PATH": db_path})
     for _ in range(20):
         time.sleep(1)
         if _port_open(BACKEND_PORT): break
@@ -160,7 +164,8 @@ def start():
             results.update(rr)
             return results
     elif not _port_open(BACKEND_PORT):
-        _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
+        _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log",
+             env={"COMPOUND_DB_PATH": db_path})
         for _ in range(20):
             time.sleep(1)
             if _port_open(BACKEND_PORT): break
