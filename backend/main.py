@@ -567,8 +567,12 @@ def run_exposure_demo(session: Session = Depends(get_session)):
     for c in demo:
         existing = session.exec(select(DailyDecision).where(DailyDecision.date==today,DailyDecision.fund_code==c["fund_code"])).first()
         f = existing if existing else DailyDecision(date=today,fund_code=c["fund_code"],fund_name=c["fund_name"])
-        for k,v in c.items():
-            if hasattr(f, k): setattr(f, k, v)
+        # Set only safe fields (skip decision_source — column may not exist)
+        safe_fields = ["system_status","strategy_action","recommended_amount","candidate_amount",
+                       "downgrade_reason","candidate_action","downgraded_from_action",
+                       "reason_summary","exposure_status"]
+        for k in safe_fields:
+            if k in c: setattr(f, k, c[k])
         f.theme_bucket = "消费" if "消费" in c["fund_name"] else ("混合" if "混合" in c["fund_name"] else "医药")
         f.exposure_guard_applied = bool(c.get("downgrade_reason"))
         f.classification_source = c.get("classification_source","local_rule")
