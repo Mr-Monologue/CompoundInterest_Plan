@@ -538,12 +538,30 @@ def runtime_status_endpoint():
         s.connect(("127.0.0.1", 731)); s.close()
         frontend_ok = True
     except: pass
+
+    # Scheduler status
+    hb_alive = hb.get("status") == "alive"
+    from datetime import datetime
+    last_seen = hb.get("last_seen","")
+    stale = False
+    if last_seen:
+        try: stale = (datetime.now() - datetime.fromisoformat(last_seen)).total_seconds() > 300
+        except: pass
+    sched_status = "IDLE" if hb_alive and not stale else ("DEGRADED" if stale else "STOPPED")
+
     return {
         "backend": "READY",
         "frontend": "READY" if frontend_ok else "UNKNOWN",
-        "scheduler": "alive" if hb.get("status") == "alive" else "stopped",
-        "today_decision": {"generated": False},
-        "last_heartbeat": hb.get("last_seen"),
+        "scheduler": {
+            "status": sched_status,
+            "alive": hb_alive,
+            "last_heartbeat": last_seen,
+            "next_job": hb.get("next_job", ""),
+            "next_job_at": hb.get("next_job_at", ""),
+            "last_job": hb.get("last_job", ""),
+            "last_job_status": hb.get("last_job_status", ""),
+        },
+        "today": {"status": "generated", "decision_count": 0, "generated_at": None, "source": ""},
     }
 
 # ── v0.8.2 Daily Decision APIs ────────────────────
@@ -687,7 +705,20 @@ def run_daily_decisions(session: Session = Depends(get_session)):
             session.add(f)
         session.commit()
         results.append({"fund_code": c["fund_code"], "system_status": c["system_status"], "strategy_action": c["strategy_action"], "downgraded": bool(c.get("downgrade_reason"))})
-    return {"ok": True, "date": today, "count": len(results), "created": sum(1 for r in results if r.get("status") != "API_ERROR"), "results": results}
+    return {
+        "ok": True,
+        "date": today,
+        "decision_source": "manual",
+        "count": len(results),
+        "created": sum(1 for r in results if r.get("status") != "API_ERROR"),
+        "summary": {
+            "need_action": sum(1 for r in results if r.get("strategy_action")=="fixed_dca"),
+            "observe": sum(1 for r in results if r.get("strategy_action")=="observe"),
+            "blocked": sum(1 for r in results if r.get("system_status")=="BLOCKED"),
+            "total_final_amount": sum((r.get("recommended_amount") or 0) for r in results if r.get("system_status")=="PASS"),
+        },
+        "results": results
+    }
 
 
 @app.get("/api/decision/today")

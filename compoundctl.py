@@ -219,6 +219,23 @@ def open_gui():
     webbrowser.open(f"http://127.0.0.1:{FRONTEND_PORT}")
     return {"gui": f"http://127.0.0.1:{FRONTEND_PORT}"}
 
+def daily():
+    """Generate today's DailyDecision via API."""
+    if not _port_open(BACKEND_PORT):
+        start()
+    d = _api_post("/api/decision/run-daily")
+    if not d or not d.get("ok"):
+        return {"error": "Plan generation failed", "detail": d}
+    # Verify
+    td = _api_get("/api/decision/today")
+    return {
+        "ok": True,
+        "date": d.get("date"),
+        "count": d.get("count", 0),
+        "summary": d.get("summary", {}),
+    }
+
+
 def demo():
     # Ensure backend with features
     if not _port_open(BACKEND_PORT):
@@ -341,6 +358,7 @@ if __name__ == "__main__":
     sp.add_parser("repair", help="Repair all services")
     sp.add_parser("open", help="Open GUI in browser")
     sp.add_parser("demo", help="Generate exposure demo data")
+    sp.add_parser("daily", help="Generate today plan")
 
     up = sp.add_parser("update-check", help="Check for updates")
     ua = sp.add_parser("update-apply", help="Apply updates")
@@ -350,6 +368,7 @@ if __name__ == "__main__":
 
     handlers = {"start": start, "stop": stop, "restart": lambda: (stop(), start()),
                 "status": status, "repair": repair, "open": open_gui, "demo": demo,
+                "daily": daily,
                 "update-check": update_check,
                 "update-apply": lambda: update_apply(args.confirm if hasattr(args,'confirm') else False)}
 
