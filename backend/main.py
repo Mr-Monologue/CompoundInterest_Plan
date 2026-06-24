@@ -576,7 +576,17 @@ def run_exposure_demo(session: Session = Depends(get_session)):
         if not existing: session.add(f)
         else: session.add(f)
         session.commit()
-    return {"ok":True,"demo":True,"count":len(demo)}
+    return {
+        "ok": True,
+        "decision_source": "exposure_demo",
+        "count": len(demo),
+        "candidate_total": sum(c.get("candidate_amount",0) or 0 for c in demo),
+        "final_total": sum((c.get("recommended_amount") or 0) for c in demo if c["strategy_action"]=="fixed_dca"),
+        "items": [{"fund_code":c["fund_code"],"fund_name":c["fund_name"],
+                    "candidate_amount":c.get("candidate_amount"),"final_amount":c.get("recommended_amount"),
+                    "candidate_action":c.get("candidate_action","fixed_dca"),"final_action":c["strategy_action"],
+                    "downgrade_reason":c.get("downgrade_reason","")} for c in demo]
+    }
 
 
 @app.post("/api/decision/run-daily")

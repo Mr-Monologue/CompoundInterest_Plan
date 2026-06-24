@@ -71,6 +71,14 @@ function App() {
       .finally(() => setDailyLoading(false));
   };
 
+  const handleGenerateDemo = () => {
+    setDailyLoading(true);
+    fetch('http://127.0.0.1:9600/api/decision/run-exposure-demo', { method: 'POST' })
+      .then(r => r.json())
+      .then(() => fetchDailyDecisions())
+      .finally(() => setDailyLoading(false));
+  };
+
   const handleUserAction = (id: number, action: string, amount?: number, reason?: string) => {
     fetch(`http://127.0.0.1:9600/api/decision/${id}/user-action`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -276,6 +284,7 @@ function App() {
                   可能原因：<br/>1. Scheduler 今天还没有运行<br/>2. 代理指数数据尚未ready<br/>3. 后端 API 未连接<br/>4. 今日计划生成失败
                 </div>
                 <button onClick={handleGenerateToday} disabled={dailyLoading} className="btn btn-primary" style={{padding:'10px 24px'}}>{dailyLoading ? '生成中...' : '生成今日计划'}</button>
+                <button onClick={handleGenerateDemo} disabled={dailyLoading} className="btn btn-secondary" style={{padding:'10px 24px', marginTop:8}}>{dailyLoading ? '...' : '生成 Demo 计划'}</button>
               </div>
             ) : (
               (() => {
