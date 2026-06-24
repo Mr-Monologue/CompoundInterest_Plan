@@ -54,6 +54,37 @@ def _pid_alive(pid):
     try: os.kill(int(pid), 0); return True
     except: return False
 
+def _port_pid(port):
+    """Get PID of process occupying a port. Returns (pid, ok) or (None, False)."""
+    try:
+        if sys.platform == "win32":
+            r = subprocess.run(f"netstat -ano | findstr :{port} | findstr LISTENING", shell=True, capture_output=True, text=True, timeout=5)
+            for line in r.stdout.strip().split("\n"):
+                parts = line.strip().split()
+                if parts and parts[-1].isdigit():
+                    return int(parts[-1]), True
+    except: pass
+    return None, False
+
+def _restart_managed_backend():
+    """Restart backend only if managed by compoundctl. Never kills unknown processes."""
+    state = _read_state()
+    pid, ok = _port_pid(BACKEND_PORT)
+    if ok:
+        owner = state.get("backend", {}).get("started_by", "")
+        if owner != "compoundctl":
+            return {"status": "PORT_CONFLICT", "port": BACKEND_PORT, "pid": pid, "owner": "unknown", "action": "manual_confirm_required"}
+    # Restart
+    _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
+    for _ in range(20):
+        time.sleep(1)
+        if _port_open(BACKEND_PORT): break
+    # Update state
+    state["backend"] = {"started_at": datetime.now().isoformat(), "started_by": "compoundctl", "port": BACKEND_PORT}
+    _write_state(state)
+    h = _api_get("/api/health")
+    return {"status": "READY", "features": (h or {}).get("features", {})}
+
 def status():
     h = _api_get("/api/health")
     hb = json.loads(HB_FILE.open().read()) if HB_FILE.exists() else {}
@@ -71,20 +102,16 @@ def start():
     results = {}
     restarted = False
 
-    # Backend — check features, restart if old
+    # Backend — check features, restart if old using managed restart
     h = _api_get("/api/health")
     features = (h or {}).get("features", {})
     if not features.get("exposure_demo"):
-        if _port_open(BACKEND_PORT):
-            results["backend_note"] = "Old backend detected, restarting for v0.9.1 features"
-            # Kill old and restart
-            _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
-            for _ in range(20):
-                time.sleep(1)
-                if _port_open(BACKEND_PORT): break
-            restarted = True
-
-    if not _port_open(BACKEND_PORT):
+        results["backend_note"] = "Old backend, auto-restarting..."
+        rr = _restart_managed_backend()
+        if rr.get("status") == "PORT_CONFLICT":
+            results.update(rr)
+            return results
+    elif not _port_open(BACKEND_PORT):
         _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
         for _ in range(20):
             time.sleep(1)
@@ -145,8 +172,9 @@ def demo():
         start()
     h = _api_get("/api/health")
     if not h or not (h.get("features") or {}).get("exposure_demo"):
-        # Backend is old — restart
-        start()
+        rr = _restart_managed_backend()
+        if rr.get("status") == "PORT_CONFLICT":
+            return {"error": "PORT_CONFLICT", "port": rr["port"], "pid": rr["pid"], "action": "manual_confirm_required"}
         h = _api_get("/api/health")
 
     d = _api_post("/api/decision/run-exposure-demo")
@@ -195,8 +223,46 @@ def update_check():
 def update_apply(confirm=False):
     if not confirm:
         return {"error": "Requires --confirm flag"}
-    # Not auto-applying
-    return {"status": "skipped", "reason": "Update requires manual confirmation"}
+    steps = []
+    # 1. Backup DB
+    try:
+        import shutil
+        db_path = ROOT / "invest.db"
+        if db_path.exists():
+            bak = ROOT / f"data/invest.db.bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            bak.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(db_path, bak)
+            steps.append({"step": "backup_db", "ok": True, "path": str(bak)})
+    except Exception as e:
+        steps.append({"step": "backup_db", "ok": False, "error": str(e)})
+    # 2. Git pull
+    try:
+        r = subprocess.run("git pull", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=30)
+        steps.append({"step": "git_pull", "ok": r.returncode==0, "output": r.stdout.strip()[-200:]})
+    except Exception as e:
+        steps.append({"step": "git_pull", "ok": False, "error": str(e)})
+    # 3. Install deps
+    try:
+        r = subprocess.run(f"{sys.executable} -m pip install -r requirements.txt --quiet", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+        steps.append({"step": "pip_install", "ok": r.returncode==0})
+    except:
+        steps.append({"step": "pip_install", "ok": False})
+    # 4. pytest
+    try:
+        r = subprocess.run(f"{sys.executable} -m pytest tests/ -q", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=120)
+        steps.append({"step": "pytest", "ok": r.returncode==0, "output": r.stdout.strip()[-100:]})
+    except:
+        steps.append({"step": "pytest", "ok": False})
+    # 5. npm build
+    try:
+        r = subprocess.run("npm run build", shell=True, capture_output=True, text=True, cwd=str(ROOT/"frontend"), timeout=120)
+        steps.append({"step": "npm_build", "ok": r.returncode==0})
+    except:
+        steps.append({"step": "npm_build", "ok": False})
+    # 6. Restart
+    rr = start()
+    steps.append({"step": "restart", "result": rr})
+    return {"steps": steps, "all_ok": all(s.get("ok", True) for s in steps)}
 
 # CLI
 if __name__ == "__main__":

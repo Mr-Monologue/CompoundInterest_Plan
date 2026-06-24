@@ -1,10 +1,18 @@
-"""operator.py — Hermes Desktop Operator v0.9
-All actions via compoundctl. Never manual taskkill/python/curl."""
-import os, json, subprocess
+"""operator.py — Hermes Desktop Operator v0.9.2
+
+All actions via compoundctl. NO manual taskkill/python/curl/git output.
+Emergency troubleshooting only in docs/troubleshooting.md.
+"""
+import os, json, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(os.environ.get("CIP_ROOT", os.getcwd()))
-CTL = sys.executable + " " + str(ROOT / "compoundctl.py") if "sys" in dir() else str(ROOT / "compoundctl.py")
+
+# Hard-ban keywords — if any response contains these, it's a bug
+BANNED_KEYWORDS = ["taskkill /F /IM python.exe", "手动 git pull", "手动启动", "npx vite",
+                   "curl -X POST", "你本机重启即可", "手动 curl", "python backend/main.py"]
+
+ROOT = Path(os.environ.get("CIP_ROOT", os.getcwd()))
 
 def _run(action):
     import sys
