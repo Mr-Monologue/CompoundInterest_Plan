@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """compoundctl v0.9 — Hermes Runtime Controller. Never auto-trades."""
-import os, sys, json, time, socket, signal, subprocess, argparse, urllib.request
+import os, sys, json, time, socket, signal, subprocess, argparse, urllib.request, shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -10,7 +10,15 @@ FRONTEND_PORT = 731
 BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 STATE_FILE = ROOT / "hermes/runtime/.process_state.json"
 HB_FILE = ROOT / "hermes/runtime/.scheduler_heartbeat.json"
+POLICY_FILE = ROOT / "hermes/runtime/runtime_policy.yaml"
+AUDIT_FILE = ROOT / "logs/runtime_audit.jsonl"
 LOGS_DIR = ROOT / "logs"
+
+def _load_policy():
+    try:
+        import yaml
+        with open(POLICY_FILE) as f: return yaml.safe_load(f)
+    except: return {"autonomy_mode": "runtime_admin", "auto_actions": {"release_stale_backend": True}}
 ALERTS_DIR = ROOT / "alerts"
 
 def _port_open(port, timeout=1):
@@ -66,24 +74,64 @@ def _port_pid(port):
     except: pass
     return None, False
 
+def _audit(event, port=None, pid=None, action=""):
+    AUDIT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(AUDIT_FILE, "a") as f:
+        f.write(json.dumps({"event":event,"port":port,"pid":pid,"action":action,"timestamp":datetime.now().isoformat()}, default=str) + "\n")
+
+def _process_fingerprint(pid):
+    """Check if a PID matches project fingerprint."""
+    try:
+        if sys.platform == "win32":
+            r = subprocess.run(f"wmic process where processid={pid} get commandline /format:csv", shell=True, capture_output=True, text=True, timeout=5)
+            cmdline = r.stdout.lower()
+            # Also get cwd
+            return "backend" in cmdline or "main.py" in cmdline or "uvicorn" in cmdline or "compound-interest-plan" in cmdline
+    except: pass
+    return False
+
+def _release_port_if_fingerprint_matches(port):
+    """Auto-release port if occupied by project process. Returns dict with result."""
+    policy = _load_policy()
+    if not policy.get("auto_actions", {}).get("release_stale_backend"):
+        return {"status": "SKIPPED", "reason": "auto_release disabled in policy"}
+
+    pid, ok = _port_pid(port)
+    if not ok:
+        return {"status": "NOT_OCCUPIED"}
+
+    is_project = _process_fingerprint(pid)
+    if not is_project:
+        _audit("port_conflict_blocked", port=port, pid=pid, action="blocked_non_project")
+        return {"status": "PORT_CONFLICT_BLOCKED", "port": port, "pid": pid,
+                "reason": "Process does not match project fingerprint"}
+
+    # Auto-release: terminate specific PID
+    _audit("auto_release_port", port=port, pid=pid, action="terminate_specific_pid")
+    try: os.kill(pid, signal.SIGTERM); time.sleep(1)
+    except: pass
+    # Verify released
+    if _port_open(port):
+        _audit("auto_release_failed", port=port, pid=pid, action="terminate_failed")
+        return {"status": "RELEASE_FAILED", "port": port, "pid": pid}
+    _audit("auto_release_success", port=port, pid=pid, action="released")
+    return {"status": "RELEASED", "port": port, "pid": pid}
+
 def _restart_managed_backend():
-    """Restart backend only if managed by compoundctl. Never kills unknown processes."""
-    state = _read_state()
-    pid, ok = _port_pid(BACKEND_PORT)
-    if ok:
-        owner = state.get("backend", {}).get("started_by", "")
-        if owner != "compoundctl":
-            return {"status": "PORT_CONFLICT", "port": BACKEND_PORT, "pid": pid, "owner": "unknown", "action": "manual_confirm_required"}
-    # Restart
+    """Restart backend — auto-release stale if policy allows, then restart."""
+    rr = _release_port_if_fingerprint_matches(BACKEND_PORT)
+    if rr.get("status") == "PORT_CONFLICT_BLOCKED":
+        return rr
+    # Start fresh
     _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
     for _ in range(20):
         time.sleep(1)
         if _port_open(BACKEND_PORT): break
-    # Update state
-    state["backend"] = {"started_at": datetime.now().isoformat(), "started_by": "compoundctl", "port": BACKEND_PORT}
+    state = _read_state()
+    state["backend"] = {"started_at": datetime.now().isoformat(), "started_by": "compoundctl"}
     _write_state(state)
     h = _api_get("/api/health")
-    return {"status": "READY", "features": (h or {}).get("features", {})}
+    return {"status": "READY", "features": (h or {}).get("features", {}), "auto_released": rr}
 
 def status():
     h = _api_get("/api/health")
@@ -223,6 +271,18 @@ def update_check():
 def update_apply(confirm=False):
     if not confirm:
         return {"error": "Requires --confirm flag"}
+
+    # Check what changed
+    policy = _load_policy()
+    try:
+        r = subprocess.run("git diff --name-only HEAD~1 2>&1", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=10)
+        changed = r.stdout.strip().split("\n") if r.stdout.strip() else []
+        unsafe = [f for f in changed if any(kw in f.lower() for kw in
+            ["strategy", "risk_guard", "risk guard", "migration", "transaction", "confirm", "trade", "buy", "sell"])]
+        if unsafe and not policy.get("update_policy", {}).get("auto_apply_strategy_changes"):
+            return {"blocked": True, "reason": "策略/风控/交易相关变更，已阻断自动应用", "unsafe_files": unsafe}
+    except: pass
+
     steps = []
     # 1. Backup DB
     try:

@@ -1,0 +1,39 @@
+autonomy_mode: runtime_admin
+project_root: "F:\\compound-interest-plan"
+allowed_ports:
+  - 9600
+  - 731
+allowed_process_fingerprints:
+  backend:
+    port: 9600
+    command_contains: ["backend", "main.py", "uvicorn", "compound-interest-plan"]
+    cwd_contains: ["compound-interest-plan"]
+    health_url: "http://127.0.0.1:9600/api/health"
+  frontend:
+    port: 731
+    command_contains: ["vite", "node", "frontend", "compound-interest-plan"]
+    cwd_contains: ["compound-interest-plan"]
+auto_actions:
+  release_stale_backend: true
+  release_stale_frontend: true
+  restart_managed_services: true
+  restart_stale_backend: true
+  open_gui_after_start: true
+  run_demo_without_confirmation: true
+  update_check_without_confirmation: true
+update_policy:
+  auto_apply_runtime_fixes: true
+  auto_apply_frontend_fixes: true
+  auto_apply_docs: true
+  auto_apply_strategy_changes: false
+  auto_apply_risk_guard_changes: false
+  auto_apply_db_migrations: false
+  backup_db_before_any_update: true
+  require_pytest: true
+  require_npm_build: true
+never:
+  - kill_all_python
+  - kill_unknown_non_project_process
+  - auto_trade
+  - auto_confirm_transaction
+  - silent_strategy_change
