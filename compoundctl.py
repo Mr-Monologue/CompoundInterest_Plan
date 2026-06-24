@@ -69,7 +69,21 @@ def status():
 
 def start():
     results = {}
-    # Backend
+    restarted = False
+
+    # Backend — check features, restart if old
+    h = _api_get("/api/health")
+    features = (h or {}).get("features", {})
+    if not features.get("exposure_demo"):
+        if _port_open(BACKEND_PORT):
+            results["backend_note"] = "Old backend detected, restarting for v0.9.1 features"
+            # Kill old and restart
+            _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
+            for _ in range(20):
+                time.sleep(1)
+                if _port_open(BACKEND_PORT): break
+            restarted = True
+
     if not _port_open(BACKEND_PORT):
         _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log")
         for _ in range(20):
@@ -77,10 +91,17 @@ def start():
             if _port_open(BACKEND_PORT): break
     results["backend"] = "READY" if _port_open(BACKEND_PORT) else "FAILED"
 
-    # Scheduler (no heartbeat yet — just start)
-    if not HB_FILE.exists():
+    # Scheduler — start and write heartbeat
+    if not HB_FILE.exists() or (json.loads(HB_FILE.open().read()) if HB_FILE.exists() else {}).get("status") != "alive":
         _run(f"python -m hermes.runtime.scheduler", logfile=LOGS_DIR/"scheduler.log")
-    results["scheduler"] = "STARTING"
+        time.sleep(2)
+        # Write initial heartbeat so status shows READY
+        HB_FILE.parent.mkdir(parents=True, exist_ok=True)
+        hb = {"status": "alive", "pid": -1, "last_seen": datetime.now().isoformat(),
+              "last_job": "startup", "last_job_status": "success",
+              "next_job": "daily_sample", "next_job_at": datetime.now().isoformat()}
+        HB_FILE.write_text(json.dumps(hb, indent=2))
+    results["scheduler"] = "READY" if HB_FILE.exists() else "STARTING"
 
     # Frontend
     if not _port_open(FRONTEND_PORT):
@@ -119,26 +140,57 @@ def open_gui():
     return {"gui": f"http://127.0.0.1:{FRONTEND_PORT}"}
 
 def demo():
+    # Ensure backend with features
     if not _port_open(BACKEND_PORT):
         start()
+    h = _api_get("/api/health")
+    if not h or not (h.get("features") or {}).get("exposure_demo"):
+        # Backend is old — restart
+        start()
+        h = _api_get("/api/health")
+
     d = _api_post("/api/decision/run-exposure-demo")
     if not d or not d.get("ok"):
-        return {"error": "Demo generation failed", "detail": d}
+        return {"error": "Demo generation failed after restart", "health_features": (h or {}).get("features")}
     return {
         "ok": True,
         "decision_source": "exposure_demo",
         "candidate_total": d.get("candidate_total", 0),
         "final_total": d.get("final_total", 0),
+        "downgraded_count": sum(1 for i in d.get("items",[]) if i.get("downgrade_reason")),
         "count": d.get("count", 0),
     }
 
 def update_check():
-    # Check remote git status (dry run)
+    import subprocess, os
+    result = {"remote_available": False, "local_head_commit": "", "remote_head_commit": "",
+              "running_backend_commit": "", "backend_needs_restart": False, "working_tree_dirty": False}
+
+    # Local git info
     try:
-        r = subprocess.run("git fetch origin develop --dry-run 2>&1", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=10)
-        return {"remote_available": True, "status": r.stdout.strip() or "up to date"}
-    except:
-        return {"remote_available": False}
+        r = subprocess.run("git rev-parse --short HEAD", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=5)
+        result["local_head_commit"] = r.stdout.strip()
+        r2 = subprocess.run("git diff --stat", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=5)
+        result["working_tree_dirty"] = bool(r2.stdout.strip())
+    except: pass
+
+    # Running backend commit
+    h = _api_get("/api/health")
+    result["running_backend_commit"] = (h or {}).get("git_commit", "unknown")
+
+    # Compare
+    if result["local_head_commit"] and result["running_backend_commit"]:
+        result["backend_needs_restart"] = result["local_head_commit"] != result["running_backend_commit"]
+
+    # Remote
+    try:
+        r = subprocess.run("git ls-remote origin HEAD 2>&1", shell=True, capture_output=True, text=True, cwd=str(ROOT), timeout=10)
+        if r.stdout.strip():
+            result["remote_available"] = True
+            result["remote_head_commit"] = r.stdout.strip().split()[0][:7]
+    except: pass
+
+    return result
 
 def update_apply(confirm=False):
     if not confirm:

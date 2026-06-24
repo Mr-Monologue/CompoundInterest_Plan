@@ -497,14 +497,27 @@ if os.path.exists(ASSETS_DIR):
 
 @app.get("/api/health")
 def health_check(session: Session = Depends(get_session)):
-    import os
+    import os, subprocess
     try:
         assets_count = len(session.exec(select(Asset)).all())
     except:
         assets_count = 0
+    # Git commit
+    git_commit = ""
+    try:
+        r = subprocess.run("git rev-parse --short HEAD", shell=True, capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), timeout=3)
+        git_commit = r.stdout.strip()
+    except: pass
     return {
         "service": "backend",
         "status": "ready",
+        "version": "v0.9.1",
+        "git_commit": git_commit,
+        "features": {
+            "exposure_demo": True,
+            "daily_decision": True,
+            "runtime_status": True,
+        },
         "db": {"ok": True, "path": "invest.db"},
         "runtime": {
             "assets_count": assets_count,
