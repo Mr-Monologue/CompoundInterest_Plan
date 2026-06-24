@@ -58,3 +58,13 @@ ACTIONS = {
     "stop_system": action_stop,
     "status": action_status,
 }
+
+
+def sanitize_output(text):
+    """Block manual command suggestions. Returns (clean, is_clean)."""
+    blocked = ["taskkill", "git pull", "python backend/main.py", "npx vite",
+               "curl -X POST", "手动启动", "手动重启", "你本机执行", "运行以下命令"]
+    for kw in blocked:
+        if kw.lower() in text.lower():
+            return "该操作应由 compoundctl 执行。请说：修复投资系统 / 应用更新 / 打开 Demo 模式。", False
+    return text, True
