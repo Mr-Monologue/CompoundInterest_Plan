@@ -85,10 +85,10 @@ def _process_fingerprint(pid):
     """Check if a PID matches project fingerprint."""
     try:
         if sys.platform == "win32":
-            r = subprocess.run(f"wmic process where processid={pid} get commandline /format:csv", shell=True, capture_output=True, text=True, timeout=5)
+            # Use tasklist (ASCII output) to avoid wmic Unicode issues
+            r = subprocess.run(f"tasklist /FI \"PID eq {pid}\" /FO CSV /NH", shell=True, capture_output=True, text=True, timeout=5, errors='replace')
             cmdline = r.stdout.lower()
-            # Also get cwd
-            return "backend" in cmdline or "main.py" in cmdline or "uvicorn" in cmdline or "compound-interest-plan" in cmdline
+            return "python" in cmdline
     except: pass
     return False
 
