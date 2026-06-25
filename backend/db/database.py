@@ -30,6 +30,12 @@ def create_db_and_tables():
                 conn.execute(text("ALTER TABLE dailydecision ADD COLUMN candidate_amount FLOAT"))
             if "downgrade_reason" not in cols:
                 conn.execute(text("ALTER TABLE dailydecision ADD COLUMN downgrade_reason TEXT DEFAULT ''"))
+            if "decision_source" not in cols:
+                conn.execute(text("ALTER TABLE dailydecision ADD COLUMN decision_source TEXT DEFAULT 'scheduler'"))
+            if "classification_source" not in cols:
+                conn.execute(text("ALTER TABLE dailydecision ADD COLUMN classification_source TEXT DEFAULT ''"))
+            if "classification_confidence" not in cols:
+                conn.execute(text("ALTER TABLE dailydecision ADD COLUMN classification_confidence TEXT DEFAULT ''"))
             conn.commit()
     SQLModel.metadata.create_all(engine)
 
