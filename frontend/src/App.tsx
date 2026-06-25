@@ -62,17 +62,22 @@ function App() {
   const handleOpenDailyPlan = () => { fetchDailyDecisions(); setShowDailyPlan(true); };
 
   const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState("");
 
   const handleGenerateToday = () => {
-    setDailyLoading(true);
+    setDailyLoading(true); setDailyError("");
     fetch('http://127.0.0.1:9600/api/decision/run-daily', { method: 'POST' })
       .then(r => r.json())
-      .then(() => fetchDailyDecisions())
+      .then(data => {
+        if (!data.ok) { setDailyError(data.reason || data.error_code || "生成失败"); return; }
+        fetchDailyDecisions();
+      })
+      .catch(e => setDailyError(e.message))
       .finally(() => setDailyLoading(false));
   };
 
   const handleGenerateDemo = () => {
-    setDailyLoading(true);
+    setDailyLoading(true); setDailyError("");
     fetch('http://127.0.0.1:9600/api/decision/run-exposure-demo', { method: 'POST' })
       .then(r => r.json())
       .then(() => fetchDailyDecisions())
@@ -276,7 +281,8 @@ function App() {
                   })()}
                 </div>
               );
-            })()}
+            );\n            })()}
+            {dailyError && <div style={{background:'rgba(239,68,68,0.08)', padding:12, borderRadius:8, marginBottom:16, border:'1px solid rgba(239,68,68,0.2)'}}><div style={{fontSize:12,color:'#ef4444',marginBottom:4}}>生成失败</div><div style={{fontSize:11,color:'#fca5a5'}}>{dailyError}</div></div>}
             {dailyDecisions.length===0 ? (
               <div style={{textAlign:'center', padding:30}}>
                 <div style={{color:'#71717a', marginBottom:16}}>今日操作计划尚未生成</div>

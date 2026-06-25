@@ -525,43 +525,34 @@ def health_check(session: Session = Depends(get_session)):
 
 
 @app.get("/api/runtime/status")
-def runtime_status_endpoint():
+def runtime_status_endpoint(session: Session = Depends(get_session)):
     import os, json, socket
     hb = {}
     hb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hermes", "runtime", ".scheduler_heartbeat.json")
     if os.path.exists(hb_path):
         with open(hb_path) as f: hb = json.load(f)
-    # Check frontend port
     frontend_ok = False
-    try:
-        s = socket.socket(); s.settimeout(1)
-        s.connect(("127.0.0.1", 731)); s.close()
-        frontend_ok = True
+    try: s=socket.socket();s.settimeout(1);s.connect(("127.0.0.1",731));s.close();frontend_ok=True
     except: pass
-
-    # Scheduler status
-    hb_alive = hb.get("status") == "alive"
     from datetime import datetime
-    last_seen = hb.get("last_seen","")
-    stale = False
-    if last_seen:
-        try: stale = (datetime.now() - datetime.fromisoformat(last_seen)).total_seconds() > 300
-        except: pass
-    sched_status = "IDLE" if hb_alive and not stale else ("DEGRADED" if stale else "STOPPED")
-
+    hb_alive = hb.get("status")=="alive"
+    last_seen=hb.get("last_seen","")
+    stale=False
+    try: stale=(datetime.now()-datetime.fromisoformat(last_seen)).total_seconds()>300 if last_seen else True
+    except: stale=True
+    sched_status="IDLE" if hb_alive and not stale else ("DEGRADED" if stale else "STOPPED")
+    # Count today's decisions
+    try:
+        tdy = _dt.today().isoformat()
+        decisions = session.exec(select(DailyDecision).where(DailyDecision.date == tdy)).all()
+        dd_count = len(decisions)
+        srcs = set(d.decision_source for d in decisions if hasattr(d,'decision_source'))
+        dd_source = "exposure_demo" if "exposure_demo" in srcs else ("manual" if "manual" in srcs else "scheduler")
+    except: dd_count = 0; dd_source = ""
     return {
-        "backend": "READY",
-        "frontend": "READY" if frontend_ok else "UNKNOWN",
-        "scheduler": {
-            "status": sched_status,
-            "alive": hb_alive,
-            "last_heartbeat": last_seen,
-            "next_job": hb.get("next_job", ""),
-            "next_job_at": hb.get("next_job_at", ""),
-            "last_job": hb.get("last_job", ""),
-            "last_job_status": hb.get("last_job_status", ""),
-        },
-        "today": {"status": "generated", "decision_count": 0, "generated_at": None, "source": ""},
+        "backend":"READY","frontend":"READY" if frontend_ok else "UNKNOWN",
+        "scheduler":{"status":sched_status,"alive":hb_alive,"last_heartbeat":last_seen,"next_job":hb.get("next_job",""),"next_job_at":hb.get("next_job_at",""),"last_job":hb.get("last_job",""),"last_job_status":hb.get("last_job_status","")},
+        "today":{"status":"generated" if dd_count>0 else "not_generated","decision_count":dd_count,"generated_at":None,"source":dd_source},
     }
 
 # ── v0.8.2 Daily Decision APIs ────────────────────
