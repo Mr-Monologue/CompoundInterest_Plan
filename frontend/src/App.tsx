@@ -51,37 +51,69 @@ function App() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [dailyDecisions, setDailyDecisions] = useState<any[]>([]);
   const [showDailyPlan, setShowDailyPlan] = useState(false);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState<any>(null);
+  const [dailyDebug, setDailyDebug] = useState<any>(null);
+
+  const apiUrl = (path: string) => `/api${path}`;
+
+  async function fetchJson(url: string, options?: RequestInit) {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    let data: any = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+    if (!res.ok) throw { status: res.status, url, data, message: data?.reason || data?.message || `HTTP ${res.status}` };
+    return { ok: res.ok, data };
+  }
+
+  function normalizeToday(data: any) {
+    const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : Array.isArray(data?.results) ? data.results : [];
+    const summary = data?.summary || { need_action: 0, observe: 0, blocked: 0, total_final_amount: 0 };
+    return { items, summary };
+  }
 
   const fetchDailyDecisions = () => {
-    fetch('http://127.0.0.1:9600/api/decision/today')
-      .then(r => r.json())
-      .then(data => setDailyDecisions(data.items || []))
+    fetchJson(apiUrl('/decision/today'))
+      .then(r => { const { items } = normalizeToday(r.data); setDailyDecisions(items); })
       .catch(() => setDailyDecisions([]));
   };
 
-  const handleOpenDailyPlan = () => { fetchDailyDecisions(); setShowDailyPlan(true); };
+  const handleOpenDailyPlan = () => { fetchDailyDecisions(); setShowDailyPlan(true); setDailyError(null); };
 
-  const [dailyLoading, setDailyLoading] = useState(false);
-  const [dailyError, setDailyError] = useState("");
-
-  const handleGenerateToday = () => {
-    setDailyLoading(true); setDailyError("");
-    fetch('http://127.0.0.1:9600/api/decision/run-daily', { method: 'POST' })
-      .then(r => r.json())
-      .then(data => {
-        if (!data.ok) { setDailyError(data.reason || data.error_code || "生成失败"); return; }
-        fetchDailyDecisions();
-      })
-      .catch(e => setDailyError(e.message))
-      .finally(() => setDailyLoading(false));
+  const handleGenerateToday = async () => {
+    setDailyLoading(true); setDailyError(null);
+    setDailyDebug({ lastAction: 'run-daily', stage: 'clicked' });
+    try {
+      const run = await fetchJson(apiUrl('/decision/run-daily'), { method: 'POST' });
+      setDailyDebug((p:any) => ({...p, stage: 'run-ok', runData: run.data }));
+      if (!run.data?.ok) throw { message: run.data?.reason || 'run-daily returned ok=false', data: run.data };
+      const today = await fetchJson(apiUrl('/decision/today'));
+      const { items } = normalizeToday(today.data);
+      setDailyDebug((p:any) => ({...p, stage: 'today-ok', itemCount: items.length }));
+      if (items.length === 0) throw { message: 'run-daily成功但today返回0条' };
+      setDailyDecisions(items);
+    } catch (e: any) {
+      setDailyError(e.message || '生成失败');
+      setDailyDebug((p:any) => ({...p, stage: 'error', error: e }));
+    } finally { setDailyLoading(false); }
   };
 
-  const handleGenerateDemo = () => {
-    setDailyLoading(true); setDailyError("");
-    fetch('http://127.0.0.1:9600/api/decision/run-exposure-demo', { method: 'POST' })
-      .then(r => r.json())
-      .then(() => fetchDailyDecisions())
-      .finally(() => setDailyLoading(false));
+  const handleGenerateDemo = async () => {
+    setDailyLoading(true); setDailyError(null);
+    setDailyDebug({ lastAction: 'run-demo', stage: 'clicked' });
+    try {
+      const run = await fetchJson(apiUrl('/decision/run-exposure-demo'), { method: 'POST' });
+      setDailyDebug((p:any) => ({...p, stage: 'run-ok', runData: run.data }));
+      if (!run.data?.ok) throw { message: run.data?.reason || 'demo failed', data: run.data };
+      const today = await fetchJson(apiUrl('/decision/today'));
+      const { items } = normalizeToday(today.data);
+      setDailyDebug((p:any) => ({...p, stage: 'today-ok', itemCount: items.length }));
+      if (!items.some((i:any) => i.decision_source === 'exposure_demo')) throw { message: 'today中没有exposure_demo数据' };
+      setDailyDecisions(items);
+    } catch (e: any) {
+      setDailyError(e.message || 'Demo失败');
+      setDailyDebug((p:any) => ({...p, stage: 'error', error: e }));
+    } finally { setDailyLoading(false); }
   };
 
   const handleUserAction = (id: number, action: string, amount?: number, reason?: string) => {
@@ -283,14 +315,15 @@ function App() {
               );
             );\n            })()}
             {dailyError && <div style={{background:'rgba(239,68,68,0.08)', padding:12, borderRadius:8, marginBottom:16, border:'1px solid rgba(239,68,68,0.2)'}}><div style={{fontSize:12,color:'#ef4444',marginBottom:4}}>生成失败</div><div style={{fontSize:11,color:'#fca5a5'}}>{dailyError}</div></div>}
+            {dailyDebug && <details style={{marginBottom:16, fontSize:10, color:'#6b7280'}}><summary>Debug</summary><pre>{JSON.stringify(dailyDebug,null,2)}</pre></details>}
             {dailyDecisions.length===0 ? (
               <div style={{textAlign:'center', padding:30}}>
                 <div style={{color:'#71717a', marginBottom:16}}>今日操作计划尚未生成</div>
                 <div style={{fontSize:11, color:'#52525b', marginBottom:16, textAlign:'left', display:'inline-block'}}>
                   可能原因：<br/>1. Scheduler 今天还没有运行<br/>2. 代理指数数据尚未ready<br/>3. 后端 API 未连接<br/>4. 今日计划生成失败
                 </div>
-                <button onClick={handleGenerateToday} disabled={dailyLoading} className="btn btn-primary" style={{padding:'10px 24px'}}>{dailyLoading ? '生成中...' : '生成今日计划'}</button>
-                <button onClick={handleGenerateDemo} disabled={dailyLoading} className="btn btn-secondary" style={{padding:'10px 24px', marginTop:8}}>{dailyLoading ? '...' : '生成 Demo 计划'}</button>
+                <button type="button" onClick={handleGenerateToday} disabled={dailyLoading} className="btn btn-primary" style={{padding:'10px 24px'}}>{dailyLoading ? '生成中...' : '生成今日计划'}</button>
+                                <button type="button" onClick={handleGenerateDemo} disabled={dailyLoading} className="btn btn-secondary" style={{padding:'10px 24px', marginTop:8}}>{dailyLoading ? '...' : '生成 Demo 计划'}</button>
               </div>
             ) : (
               (() => {
