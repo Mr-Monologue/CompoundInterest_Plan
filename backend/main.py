@@ -779,5 +779,52 @@ async def serve_frontend(full_path: str):
         }
 
 
+
+# v1.0 AI Exposure Analyst APIs
+from db.models import FundHoldingSnapshot, FundExposureAnalysis, FundOverlap
+
+@app.post('/api/analysis/exposure/run/{fund_code}')
+def run_exposure_analysis(fund_code: str, session: Session = Depends(get_session)):
+    from services.ai_exposure_analyst import analyze_fund_exposure
+    asset = session.exec(select(Asset).where(Asset.code == fund_code)).first()
+    if not asset: return {'ok':False,'error':'Fund not found'}
+    fund_data = {'fund_code':fund_code,'fund_name':asset.name,'top10':[],'industry_distribution':{}}
+    result = analyze_fund_exposure(fund_data,'')
+    f = FundExposureAnalysis(fund_code=fund_code,primary_theme=result.get('primary_theme',''),
+        theme_bucket=result.get('theme_bucket',''),classification_source=result.get('classification_source',''),
+        classification_confidence=result.get('confidence',''),evidence_json=json.dumps(result.get('evidence',[])),
+        uncertainty_json=json.dumps(result.get('uncertainty',[])),model_name=result.get('model_name',''),
+        prompt_hash=result.get('prompt_hash',''),input_hash=result.get('input_hash',''))
+    session.add(f); session.commit()
+    return {'ok':True,'fund_code':fund_code,'analysis':result}
+
+@app.post('/api/analysis/exposure/run-all')
+def run_all_exposure(session: Session = Depends(get_session)):
+    assets = session.exec(select(Asset)).all()
+    results = {}
+    for a in assets:
+        try:
+            r = run_exposure_analysis(a.code, session)
+            results[a.code] = r.get('analysis',{}).get('primary_theme','error')
+        except: results[a.code] = 'error'
+    return {'ok':True,'results':results}
+
+@app.get('/api/analysis/exposure/{fund_code}')
+def get_exposure(fund_code: str, session: Session = Depends(get_session)):
+    analyses = session.exec(select(FundExposureAnalysis).where(FundExposureAnalysis.fund_code==fund_code).order_by(FundExposureAnalysis.created_at.desc())).all()
+    if not analyses: return {'ok':True,'fund_code':fund_code,'analysis':None}
+    a = analyses[0]
+    return {'ok':True,'fund_code':fund_code,'analysis':{'primary_theme':a.primary_theme,'theme_bucket':a.theme_bucket,'source':a.classification_source,'confidence':a.classification_confidence,'evidence':json.loads(a.evidence_json),'uncertainty':json.loads(a.uncertainty_json),'model':a.model_name}}
+
+@app.get('/api/portfolio/exposure')
+def portfolio_exposure(session: Session = Depends(get_session)):
+    analyses = session.exec(select(FundExposureAnalysis).order_by(FundExposureAnalysis.created_at.desc())).all()
+    themes = {}
+    for a in analyses:
+        tb = a.theme_bucket or '未分类'
+        themes[tb] = themes.get(tb,0) + 1
+    return {'ok':True,'theme_exposure':themes}
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=9600)

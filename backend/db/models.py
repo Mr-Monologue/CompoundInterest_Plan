@@ -224,3 +224,49 @@ class UserDecision(SQLModel, table=True):
     # v0.8.4: override exposure guard
     override_exposure_guard: bool = False
     override_reason: str = ""
+
+
+# ── v1.0 AI Exposure Analyst models ──────────────────
+
+class FundHoldingSnapshot(SQLModel, table=True):
+    __tablename__ = "fund_holding_snapshot"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    fund_code: str
+    report_period: str = ""
+    holding_date: str = ""
+    source: str = "local_rule"
+    top10_json: str = "[]"
+    industry_distribution_json: str = "{}"
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class FundExposureAnalysis(SQLModel, table=True):
+    __tablename__ = "fund_exposure_analysis"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    fund_code: str
+    report_period: str = ""
+    primary_theme: str = ""
+    secondary_themes_json: str = "[]"
+    theme_bucket: str = ""
+    classification_source: str = "local_rule"
+    classification_confidence: str = "low"
+    evidence_json: str = "[]"
+    uncertainty_json: str = "[]"
+    model_name: str = ""
+    model_version: str = ""
+    prompt_hash: str = ""
+    input_hash: str = ""
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class FundOverlap(SQLModel, table=True):
+    __tablename__ = "fund_overlap"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    fund_code_a: str
+    fund_code_b: str
+    report_period: str = ""
+    top10_overlap_score: float = 0.0
+    industry_overlap_score: float = 0.0
+    theme_overlap_score: float = 0.0
+    overlap_level: str = "low"
+    evidence_json: str = "[]"
