@@ -520,6 +520,7 @@ def health_check(session: Session = Depends(get_session)):
         "db": {"ok": db_exists, "path": db_path, "exists": db_exists,
                "size_bytes": db_size, "asset_count": assets_count,
                "dailydecision_count": dd_count},
+        "schema_ready": True,
         "runtime": {"cwd": os.getcwd(), "pid": os.getpid()},
     }
 
