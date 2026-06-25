@@ -298,6 +298,14 @@ function App() {
                     <span>组合上限: ¥{cap}</span>
                     {downgraded.length>0 && <span style={{color:'#f97316'}}>降级: {downgraded.length}只</span>}
                   </div>
+                  {finalTotal < candidateTotal && <div style={{fontSize:10, color:'#71717a', marginTop:6}}>最终建议低于原始候选，原因：{(():string=>{
+                    const reasons: string[] = [];
+                    if (downgraded.some((d:any)=>d.downgrade_reason?.includes('同主题'))) reasons.push('同主题重复暴露');
+                    if (dailyDecisions.some((d:any)=>d.valuation_state==='unknown')) reasons.push('估值层未接入');
+                    if (dailyDecisions.some((d:any)=>d.risk_reasons?.includes('Mock'))) reasons.push('Mock数据');
+                    if (!reasons.length) reasons.push('风控观察');
+                    return reasons.join(' / ');
+                  })()}</div>}
                   {allObserve && finalTotal===0 && (()=>{
                     const reasons:Record<string,number>={};
                     dailyDecisions.forEach(d=>{
@@ -364,7 +372,7 @@ function App() {
                               → 最终动作：{d.strategy_action} {finAmt===0?'¥0':(finAmt!=null?'¥'+finAmt:'不输出')}
                             </div>}
                             <div style={{fontSize:11,color:'#f59e0b',marginTop:4}}>{reasonLabel}</div>
-                            <div style={{fontSize:10,color:'#52525b',marginTop:2}}>来源：{cs}，置信度：{cf}</div>
+                            <div style={{fontSize:10,color:'#52525b',marginTop:2}}>来源：{cs}，置信度：{cf}{cs==='local_rule'&&cf==='medium'?' ⚠️规则推断，后续需持仓穿透验证':''}{d.theme_bucket&&d.theme_bucket!=='未分类'?` · 主题:${d.theme_bucket}`:''}</div>
                           </div>
                           <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:12}}>
                             <span style={{color:'#71717a',fontSize:13}}>{finAmt===0?'¥0 不新增':'不新增'}</span>
@@ -379,7 +387,7 @@ function App() {
                       <div style={{fontSize:12,color:'#ef4444',marginTop:4}}>不输出金额</div>
                       {d.risk_reasons && <div style={{fontSize:11,color:'#71717a',marginTop:4}}>原因: {d.risk_reasons}</div>}
                     </div>))}</>)}
-                  {noa.length>0 && <details style={{marginTop:16,color:'#6b7280'}}><summary style={{fontSize:13,cursor:'pointer'}}>无需操作 ({noa.length})</summary>
+                  {noa.length>0 && <details style={{marginTop:16,color:'#6b7280'}}><summary style={{fontSize:13,cursor:'pointer'}}>无需操作 ({noa.length}) — 系统状态已PASS，无买入信号</summary>
                     {noa.map(d=>(<div key={d.id} style={{padding:8,fontSize:12}}>{d.fund_name} — {d.system_status}</div>))}</details>}
                 </>);
               })()
