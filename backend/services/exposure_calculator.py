@@ -27,11 +27,25 @@ def classify_overlap_level(top10_score: float, ind_score: float) -> str:
     return "low"
 
 def compute_fund_pair_overlap(fund_a: dict, fund_b: dict) -> dict:
-    t10a = json.loads(fund_a.get("top10_json","[]") if isinstance(fund_a.get("top10_json"),str) else "[]")
-    t10b = json.loads(fund_b.get("top10_json","[]") if isinstance(fund_b.get("top10_json"),str) else "[]")
-    ind_a = json.loads(fund_a.get("industry_distribution_json","{}") if isinstance(fund_a.get("industry_distribution_json"),str) else "{}")
-    ind_b = json.loads(fund_b.get("industry_distribution_json","{}") if isinstance(fund_b.get("industry_distribution_json"),str) else "{}")
+    t10a_raw = fund_a.get("top10_json","[]")
+    t10b_raw = fund_b.get("top10_json","[]")
+    ind_a_raw = fund_a.get("industry_distribution_json","{}")
+    ind_b_raw = fund_b.get("industry_distribution_json","{}")
+    # Parse
+    t10a = json.loads(t10a_raw) if isinstance(t10a_raw,str) else t10a_raw
+    t10b = json.loads(t10b_raw) if isinstance(t10b_raw,str) else t10b_raw
+    ind_a = json.loads(ind_a_raw) if isinstance(ind_a_raw,str) else ind_a_raw
+    ind_b = json.loads(ind_b_raw) if isinstance(ind_b_raw,str) else ind_b_raw
+    # Check for missing data
+    if not t10a and not t10b:
+        return {"top10_overlap_score": 0.0, "industry_overlap_score": 0.0, "overlap_level": "DATA_MISSING",
+                "evidence": ["Both funds have no Top10 holding data"], "same_theme_downgrade": False}
+    if not t10a or not t10b:
+        return {"top10_overlap_score": 0.0, "industry_overlap_score": 0.0, "overlap_level": "DATA_MISSING",
+                "evidence": ["One fund has no Top10 holding data", f"missing: {'fund_a' if not t10a else 'fund_b'}"], "same_theme_downgrade": False}
     t10 = top10_overlap(t10a, t10b)
     ind = industry_overlap(ind_a, ind_b)
     level = classify_overlap_level(t10, ind)
-    return {"top10_overlap_score":round(t10,4),"industry_overlap_score":round(ind,4),"overlap_level":level,"same_theme_downgrade":t10>=0.5 or level=="high","computed_at":datetime.now().isoformat()}
+    return {"top10_overlap_score": round(t10,4), "industry_overlap_score": round(ind,4), "overlap_level": level,
+            "evidence": [f"Top10 Jaccard: {t10:.2f}", f"Industry cosine: {ind:.2f}"], "same_theme_downgrade": t10>=0.5 or level=="high",
+            "computed_at": datetime.now().isoformat()}

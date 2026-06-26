@@ -7,6 +7,7 @@ from db.database import get_session
 from db.models import Asset, FundHoldingSnapshot, FundExposureAnalysis, FundOverlap
 from services.ai_exposure_analyst import analyze_fund_exposure
 from services.exposure_calculator import compute_fund_pair_overlap
+from services.holding_snapshot import generate_snapshot_from_local, run_pipeline_for_all
 
 router = APIRouter(prefix="/api")
 
@@ -120,3 +121,24 @@ def get_portfolio_exposure(session: Session = Depends(get_session)):
         tb = a.theme_bucket or "未分类"
         themes[tb] = themes.get(tb, 0) + 1
     return {"ok": True, "theme_exposure": themes}
+
+
+@router.get("/holding/snapshot/{fund_code}")
+def get_holding_snapshot(fund_code: str, session: Session = Depends(get_session)):
+    snapshots = session.exec(select(FundHoldingSnapshot).where(FundHoldingSnapshot.fund_code == fund_code).order_by(FundHoldingSnapshot.updated_at.desc())).all()
+    if not snapshots:
+        return {"ok": True, "fund_code": fund_code, "snapshot": None, "status": "DATA_MISSING"}
+    s = snapshots[0]
+    stale_days = (datetime.now().date() - datetime.fromisoformat(s.holding_date[:10]).date()).days if s.holding_date else 999
+    return {"ok": True, "fund_code": fund_code, "snapshot": {
+        "report_period": s.report_period, "holding_date": s.holding_date, "source": s.source,
+        "top10": json.loads(s.top10_json) if s.top10_json else [],
+        "industry": json.loads(s.industry_distribution_json) if s.industry_distribution_json else {},
+        "stale_days": stale_days, "stale": stale_days > 120,
+    }}
+
+
+@router.post("/pipeline/holding-snapshots")
+def run_holding_pipeline(session: Session = Depends(get_session)):
+    result = run_pipeline_for_all(session)
+    return result
