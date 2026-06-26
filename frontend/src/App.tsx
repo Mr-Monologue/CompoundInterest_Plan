@@ -375,17 +375,25 @@ function App() {
                             {d.overlap_status && d.overlap_status!=='N/A' && <div style={{fontSize:10,color:'#6b7280',marginTop:4}}>
                               {d.overlap_status==='DATA_MISSING'
                                 ? '持仓数据缺失，无法判断真实重叠，当前仅观察。'
-                                : `Top10重叠:${(d.overlap_score*100).toFixed(0)}% | 行业重叠:${(d.overlap_industry*100).toFixed(0)}% | ${d.overlap_status}`
+                                : <>
+                                    Top10重叠:{(d.overlap_score*100).toFixed(0)}% | 行业重叠:{(d.overlap_industry*100).toFixed(0)}% | 综合:{d.overlap_status}
+                                    {d.is_fixture && d.overlap_industry>=0.8 && d.overlap_status!=='high' ? ' — 因数据来源为规则推断/示例数据，综合等级未提升为high' : ''}
+                                    {d.overlap_evidence?.length>0 && <div style={{color:'#52525b',marginTop:2}}>{d.overlap_evidence.join(', ')}</div>}
+                                  </>
                               }
-                              {d.is_fixture && ' ⚠️规则推断/示例数据，不进入实盘建议'}
-                              {d.holding_date && <span> · 持仓日期:{d.holding_date?.slice(0,10)||'未知'}</span>}
-                              {d.stale_days>120 && <span> · ⚠️过期{d.stale_days}天</span>}
+                            </div>}
+                            {d.is_fixture && <div style={{fontSize:10,color:'#ef4444',marginTop:2}}>非真实披露持仓，不进入实盘建议</div>}
+                            {d.holding_date && <div style={{fontSize:10,color:'#52525b',marginTop:2}}>
+                              {d.is_fixture ? '规则样本日期' : '持仓披露日期'}: {d.holding_date?.slice(0,10)||'未知'}
+                              {d.holding_source && ` · 来源:${d.holding_source} · stale:${d.stale_days}天`}
+                              {d.stale_days>120 && <span style={{color:'#ef4444'}}> ⚠️过期</span>}
                             </div>}
                             <div style={{fontSize:10,color:'#52525b',marginTop:2}}>
                               来源：{cs||'未返回'}，置信度：{cf||'未知'}
                               {cs==='local_rule'&&cf==='medium'?' ⚠️规则推断，后续需持仓穿透验证':''}
                               {(d.theme_bucket&&d.theme_bucket!=='未分类')?` · 主题:${d.theme_bucket}`:' · 主题:规则推断/待持仓穿透确认'}
                             </div>
+                            <div style={{fontSize:9,color:'#4b5563',marginTop:4}}>AI/持仓分析仅用于解释和暴露判断，不直接决定买入金额。</div>
                           </div>
                           <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:12}}>
                             <span style={{color:'#71717a',fontSize:13}}>{finAmt===0?'¥0 不新增':'不新增'}</span>
