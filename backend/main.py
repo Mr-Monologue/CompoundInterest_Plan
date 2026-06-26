@@ -45,6 +45,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# v1.0.1: AI Exposure Analyst router
+from api.exposure import router as exposure_router
+app.include_router(exposure_router)
+
 # === 跨域配置 ===
 app.add_middleware(
     CORSMiddleware,
