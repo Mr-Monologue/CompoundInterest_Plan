@@ -102,6 +102,13 @@ def get_overlap(fund_a: str = "", fund_b: str = "", session: Session = Depends(g
     fa = {"top10_json": sa.top10_json, "industry_distribution_json": sa.industry_distribution_json} if sa else {"top10_json": "[]", "industry_distribution_json": "{}"}
     fb = {"top10_json": sb.top10_json, "industry_distribution_json": sb.industry_distribution_json} if sb else {"top10_json": "[]", "industry_distribution_json": "{}"}
     result = compute_fund_pair_overlap(fa, fb)
+    # Compute common holdings
+    t10a = json.loads(sa.top10_json) if sa else []
+    t10b = json.loads(sb.top10_json) if sb else []
+    common = [s["name"] for s in t10a if s.get("name") in {h.get("name") for h in t10b}] if t10a and t10b else []
+    result["common_holdings"] = common
+    result["report_period"] = sa.report_period if sa else "unknown"
+    result["overlap_status"] = result["overlap_level"] if result["overlap_level"] != "DATA_MISSING" else "DATA_MISSING"
     # Save to DB
     f = FundOverlap(fund_code_a=fund_a, fund_code_b=fund_b,
                     top10_overlap_score=result["top10_overlap_score"],
@@ -131,7 +138,8 @@ def get_holding_snapshot(fund_code: str, session: Session = Depends(get_session)
     s = snapshots[0]
     stale_days = (datetime.now().date() - datetime.fromisoformat(s.holding_date[:10]).date()).days if s.holding_date else 999
     return {"ok": True, "fund_code": fund_code, "snapshot": {
-        "report_period": s.report_period, "holding_date": s.holding_date, "source": s.source,
+        "report_period": s.report_period, "holding_date": s.holding_date,
+        "source": s.source, "is_fixture": s.source == "local_heuristic",
         "top10": json.loads(s.top10_json) if s.top10_json else [],
         "industry": json.loads(s.industry_distribution_json) if s.industry_distribution_json else {},
         "stale_days": stale_days, "stale": stale_days > 120,
@@ -141,4 +149,9 @@ def get_holding_snapshot(fund_code: str, session: Session = Depends(get_session)
 @router.post("/pipeline/holding-snapshots")
 def run_holding_pipeline(session: Session = Depends(get_session)):
     result = run_pipeline_for_all(session)
+    fixture = sum(1 for v in result.get("results", {}).values() if v == "local_heuristic")
+    result["generated_count"] = len(result.get("results", {}))
+    result["fixture_count"] = fixture
+    result["missing_count"] = sum(1 for v in result.get("results", {}).values() if "error" in str(v))
+    result["stale_count"] = 0
     return result
