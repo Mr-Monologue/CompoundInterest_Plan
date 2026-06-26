@@ -112,7 +112,7 @@ report["portfolio_exposure"] = {
     "asset_count": len(assets), "included_fund_count": len(seen),
     "classified_count": 0, "unclassified_count": len(seen),
     "themes": pf.get("theme_exposure", {}),
-    "fund_count_in_themes": sum(pf.get("theme_exposure", {}).values()),
+    "fund_count_in_themes": min(sum(pf.get("theme_exposure", {}).values()), len(assets)),
     "source_mix": {"local_heuristic": len(assets)},
     "live_usable_count": 0, "fixture_count": len(assets),
 }
