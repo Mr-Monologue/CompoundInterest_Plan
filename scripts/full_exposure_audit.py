@@ -126,6 +126,7 @@ checks = {"total_items": len(items), "with_overlap_status": 0, "with_common_hold
           "with_source": 0, "with_is_fixture": 0, "with_usable": 0, "with_stale": 0, "missing_fields_by_fund": {}}
 for i in items:
     checks["with_overlap_status"] += 1 if i.get("overlap_status") else 0
+    checks["with_common_holdings"] += 1 if "common_holdings" in i or "overlap_evidence" in i else 0
     checks["with_source"] += 1 if i.get("holding_source") else 0
     checks["with_is_fixture"] += 1 if "is_fixture" in i else 0
     checks["with_usable"] += 1 if "usable_for_live" in i else 0
