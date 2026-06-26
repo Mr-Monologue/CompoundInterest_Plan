@@ -1,0 +1,8 @@
+{
+  "generated_at": "2025-06-26",
+  "system": {"backend_commit": "84f3394", "asset_count": 6},
+  "funds": 6,
+  "pairs": {"total": 15, "high": 1, "medium": 2, "low": 12, "missing": 0},
+  "high_risk": ["000083:005827 top10=0.33 industry=0.81 common=茅台,五粮液,美的"],
+  "safety": {"no_auto_trade": true}
+}

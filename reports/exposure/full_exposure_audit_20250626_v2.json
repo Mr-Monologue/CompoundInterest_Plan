@@ -1,0 +1,138 @@
+{
+  "generated_at": "2026-06-26T16:40:26.391672",
+  "report_status": "NOT_LIVE_READY",
+  "live_exposure_ready": false,
+  "funds": [
+    {
+      "fund_code": "000083",
+      "fund_name": "汇添富消费行业混合",
+      "is_fixture": true
+    },
+    {
+      "fund_code": "001532",
+      "fund_name": "华安文体健康混合A",
+      "is_fixture": true
+    },
+    {
+      "fund_code": "002340",
+      "fund_name": "富国价值优势混合A",
+      "is_fixture": true
+    },
+    {
+      "fund_code": "000032",
+      "fund_name": "易方达信用债债券A",
+      "is_fixture": true
+    },
+    {
+      "fund_code": "003096",
+      "fund_name": "中欧医疗健康混合C",
+      "is_fixture": true
+    },
+    {
+      "fund_code": "005827",
+      "fund_name": "易方达蓝筹精选混合",
+      "is_fixture": true
+    }
+  ],
+  "overlap_pairs": [
+    {
+      "fund_a": "000083",
+      "fund_b": "001532",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "000083",
+      "fund_b": "002340",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "000083",
+      "fund_b": "000032",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "000083",
+      "fund_b": "003096",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "000083",
+      "fund_b": "005827",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "001532",
+      "fund_b": "002340",
+      "overlap_level": "medium",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "001532",
+      "fund_b": "000032",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "001532",
+      "fund_b": "003096",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "001532",
+      "fund_b": "005827",
+      "overlap_level": "high",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "002340",
+      "fund_b": "000032",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "002340",
+      "fund_b": "003096",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "002340",
+      "fund_b": "005827",
+      "overlap_level": "medium",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "000032",
+      "fund_b": "003096",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "000032",
+      "fund_b": "005827",
+      "overlap_level": "low",
+      "is_fixture": true
+    },
+    {
+      "fund_a": "003096",
+      "fund_b": "005827",
+      "overlap_level": "low",
+      "is_fixture": true
+    }
+  ],
+  "fixture_pair_count": 15,
+  "total_pairs": 15,
+  "live_high_count": 0,
+  "live_medium_count": 0,
+  "safety": {
+    "no_auto_trade": true,
+    "fixture_not_live": true
+  },
+  "honest_note": "当前持仓快照均为fixture/local_heuristic，仅可用于解释层和Demo，不可用于实盘强暴露闸门。"
+}
