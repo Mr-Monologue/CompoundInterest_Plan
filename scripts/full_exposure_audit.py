@@ -151,6 +151,39 @@ dq = {"total": len(funds), "fixture": sum(1 for f in funds if f["is_fixture"]),
       "expl_high_risk": len(expl_high), "expl_medium_risk": len(expl_med)}
 report["data_quality"] = dq
 
+# ── v1.0.4.4 Strict audit rules ─────────────────────
+audit_failures = []
+# Rule 1: portfolio fund_count must not exceed asset_count
+if report["portfolio_exposure"]["fund_count_in_themes"] > len(assets):
+    audit_failures.append("PORTFOLIO_COUNT_MISMATCH")
+# Rule 2: snapshot/overlap consistency
+inconsistent = [p for p in pairs if not p.get("snapshot_consistent")]
+if inconsistent:
+    audit_failures.append("SNAPSHOT_OVERLAP_INCONSISTENT")
+# Rule 3: top10=0 but common_holdings non-empty
+for p in pairs:
+    if p.get("common_holdings") and (not fa.get("top10_count") or not fb.get("top10_count")):
+        audit_failures.append("TOKEN_MISMATCH")
+        break
+# Rule 4: API_ERROR_FALLBACK must have error message
+api_err_funds = [f for f in funds if f.get("snapshot_status") == "API_ERROR_FALLBACK" and not f.get("api_error_message")]
+if api_err_funds:
+    audit_failures.append("API_ERROR_NO_MESSAGE")
+# Rule 5: daily_decision_check honesty
+dd = report["daily_decision_check"]
+if dd["total_items"] > 0 and dd.get("with_common_holdings", 0) < dd["total_items"]:
+    if not dd.get("missing_fields_by_fund"):
+        audit_failures.append("DAILY_CHECK_MISLEADING")
+
+if audit_failures:
+    report["report_status"] = "AUDIT_FAIL"
+    report["audit_errors"] = audit_failures
+    report["honest_note"] = "当前仅验证部分 pipeline，数据一致性未通过。不允许进入实盘暴露闸门。"
+elif all(f["is_fixture"] for f in funds):
+    report["honest_note"] = "当前仅验证解释层 pipeline，不具备实盘暴露判断能力。"
+else:
+    report["honest_note"] = ""
+
 path = "F:/compound-interest-plan/reports/exposure/full_exposure_audit_20250626_v2.json"
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
