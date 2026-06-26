@@ -40,7 +40,7 @@ print(f"Pipeline: {pp.get('generated_count')} generated, {pp.get('fixture_count'
 assets = get("/api/assets")
 funds = []
 for a in assets:
-    snap = get(f"/api/holding/snapshot/{a['code']}", {"snapshot": {"is_fixture": True, "source": "API_ERROR_FALLBACK"}})
+    snap = get(f"/api/holding/snapshot/{a['code']}", {"snapshot": {"is_fixture": True, "source": "API_ERROR_FALLBACK"}, "error": "API 500 fallback"})
     s = snap.get("snapshot") or {}
     api_err = snap.get("error", "")
     funds.append({
