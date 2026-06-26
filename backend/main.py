@@ -736,7 +736,7 @@ def get_today_decisions(session: Session = Depends(get_session)):
         # v1.0.3: Enrich with overlap + holding data
         snap = session.exec(select(FundHoldingSnapshot).where(FundHoldingSnapshot.fund_code == d.fund_code).order_by(FundHoldingSnapshot.updated_at.desc())).first()
         if snap:
-            stale_days = (date.today() - datetime.fromisoformat(snap.holding_date[:10]).date()).days if snap.holding_date else 999
+            stale_days = (_dt.today() - datetime.fromisoformat(snap.holding_date[:10]).date()).days if snap.holding_date else 999
             item["holding_date"] = snap.holding_date
             item["holding_source"] = snap.source
             item["stale_days"] = stale_days
