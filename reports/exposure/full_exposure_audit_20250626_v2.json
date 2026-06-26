@@ -1,138 +1,526 @@
 {
-  "generated_at": "2026-06-26T16:40:26.391672",
+  "generated_at": "2026-06-26T17:33:02.246790",
   "report_status": "NOT_LIVE_READY",
   "live_exposure_ready": false,
+  "system": {
+    "backend_commit": "44fc65a",
+    "data_ready": true,
+    "asset_count": 6,
+    "db_path": "F:/compound-interest-plan/invest.db"
+  },
   "funds": [
     {
       "fund_code": "000083",
       "fund_name": "汇添富消费行业混合",
-      "is_fixture": true
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
     },
     {
       "fund_code": "001532",
       "fund_name": "华安文体健康混合A",
-      "is_fixture": true
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
     },
     {
       "fund_code": "002340",
       "fund_name": "富国价值优势混合A",
-      "is_fixture": true
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
     },
     {
       "fund_code": "000032",
       "fund_name": "易方达信用债债券A",
-      "is_fixture": true
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
     },
     {
       "fund_code": "003096",
       "fund_name": "中欧医疗健康混合C",
-      "is_fixture": true
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
     },
     {
       "fund_code": "005827",
       "fund_name": "易方达蓝筹精选混合",
-      "is_fixture": true
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
     }
   ],
   "overlap_pairs": [
     {
       "fund_a": "000083",
       "fund_b": "001532",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.25,
+      "industry_overlap_score": 0.1925,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [
+        "贵州茅台",
+        "五粮液",
+        "美的集团",
+        "比亚迪"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "000083",
       "fund_b": "002340",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.1765,
+      "industry_overlap_score": 0.234,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [
+        "伊利股份",
+        "美的集团",
+        "格力电器"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "000083",
       "fund_b": "000032",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0,
+      "industry_overlap_score": 0.247,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "000083",
       "fund_b": "003096",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0,
+      "industry_overlap_score": 0.2045,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "000083",
       "fund_b": "005827",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.25,
+      "industry_overlap_score": 0.1565,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [
+        "贵州茅台",
+        "五粮液",
+        "海天味业",
+        "美的集团"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "001532",
       "fund_b": "002340",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.1765,
+      "industry_overlap_score": 0.6108,
       "overlap_level": "medium",
-      "is_fixture": true
+      "common_holdings": [
+        "美的集团",
+        "中国平安",
+        "招商银行"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "001532",
       "fund_b": "000032",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0,
+      "industry_overlap_score": 0.1719,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "001532",
       "fund_b": "003096",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0526,
+      "industry_overlap_score": 0.2476,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [
+        "药明康德"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "001532",
       "fund_b": "005827",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.6667,
+      "industry_overlap_score": 0.9786,
       "overlap_level": "high",
-      "is_fixture": true
+      "common_holdings": [
+        "贵州茅台",
+        "五粮液",
+        "宁德时代",
+        "美的集团",
+        "中国平安",
+        "招商银行",
+        "腾讯控股",
+        "药明康德"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "002340",
       "fund_b": "000032",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0,
+      "industry_overlap_score": 0.2322,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "002340",
       "fund_b": "003096",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0,
+      "industry_overlap_score": 0.101,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "002340",
       "fund_b": "005827",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.1765,
+      "industry_overlap_score": 0.6477,
       "overlap_level": "medium",
-      "is_fixture": true
+      "common_holdings": [
+        "中国平安",
+        "招商银行",
+        "美的集团"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "000032",
       "fund_b": "003096",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0,
+      "industry_overlap_score": 0.1066,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "000032",
       "fund_b": "005827",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0,
+      "industry_overlap_score": 0.1323,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     },
     {
       "fund_a": "003096",
       "fund_b": "005827",
+      "overlap_status": "EXPLANATORY_ONLY",
+      "top10_overlap_score": 0.0526,
+      "industry_overlap_score": 0.2654,
       "overlap_level": "low",
-      "is_fixture": true
+      "common_holdings": [
+        "药明康德"
+      ],
+      "source_a": "API_ERROR",
+      "source_b": "API_ERROR",
+      "is_fixture_a": true,
+      "is_fixture_b": true,
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "data_quality": "fixture"
     }
   ],
+  "high_risk_pairs": [],
+  "medium_risk_pairs": [],
+  "explanatory_high_risk_pairs": [
+    "001532:005827"
+  ],
+  "explanatory_medium_risk_pairs": [
+    "001532:002340",
+    "002340:005827"
+  ],
   "fixture_pair_count": 15,
-  "total_pairs": 15,
   "live_high_count": 0,
   "live_medium_count": 0,
+  "data_missing_pair_count": 0,
+  "portfolio_exposure": {
+    "asset_count": 6,
+    "included_fund_count": 6,
+    "classified_count": 0,
+    "unclassified_count": 6,
+    "themes": {
+      "未分类": 7
+    },
+    "source_mix": {
+      "local_heuristic": 6
+    },
+    "live_usable_count": 0,
+    "fixture_count": 6
+  },
+  "daily_decision_check": {
+    "total_items": 6,
+    "with_overlap_status": 6,
+    "with_common_holdings": 0,
+    "with_source": 6,
+    "with_is_fixture": 6,
+    "with_usable": 6,
+    "missing_fields_by_fund": {
+      "000083": [
+        "usable_for_live",
+        "stale_days"
+      ],
+      "001532": [
+        "usable_for_live",
+        "stale_days"
+      ],
+      "002340": [
+        "usable_for_live",
+        "stale_days"
+      ],
+      "000032": [
+        "usable_for_live",
+        "stale_days"
+      ],
+      "003096": [
+        "usable_for_live",
+        "stale_days"
+      ],
+      "005827": [
+        "usable_for_live",
+        "stale_days"
+      ]
+    }
+  },
   "safety": {
     "no_auto_trade": true,
-    "fixture_not_live": true
+    "fixture_not_live": true,
+    "ai_no_amount": true
   },
-  "honest_note": "当前持仓快照均为fixture/local_heuristic，仅可用于解释层和Demo，不可用于实盘强暴露闸门。"
+  "snapshots": {
+    "000083": {
+      "fund_code": "000083",
+      "fund_name": "汇添富消费行业混合",
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    },
+    "001532": {
+      "fund_code": "001532",
+      "fund_name": "华安文体健康混合A",
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    },
+    "002340": {
+      "fund_code": "002340",
+      "fund_name": "富国价值优势混合A",
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    },
+    "000032": {
+      "fund_code": "000032",
+      "fund_name": "易方达信用债债券A",
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    },
+    "003096": {
+      "fund_code": "003096",
+      "fund_name": "中欧医疗健康混合C",
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    },
+    "005827": {
+      "fund_code": "005827",
+      "fund_name": "易方达蓝筹精选混合",
+      "snapshot_exists": true,
+      "source": "API_ERROR",
+      "is_fixture": true,
+      "usable_for_live_decision": false,
+      "report_period": "",
+      "holding_date": "",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    }
+  },
+  "data_quality": {
+    "total": 6,
+    "fixture": 6,
+    "live_usable": 0,
+    "stale": 0,
+    "pairs_total": 15,
+    "pairs_fixture": 15,
+    "live_high_risk": 0,
+    "live_medium_risk": 0,
+    "expl_high_risk": 1,
+    "expl_medium_risk": 2
+  }
 }

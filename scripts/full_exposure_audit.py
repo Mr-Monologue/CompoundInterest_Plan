@@ -5,12 +5,19 @@ from datetime import datetime
 BASE = "http://127.0.0.1:9600"
 DB_PATH = "F:/compound-interest-plan/invest.db"
 
-def get(path):
-    return json.loads(urllib.request.urlopen(BASE + path, timeout=30).read())
+def get(path, default=None):
+    try: return json.loads(urllib.request.urlopen(BASE+path,timeout=30).read())
+    except Exception as e:
+        if default is not None: return default
+        return {"error": str(e)[:100], "_path": path}
 
-def post(path):
-    req = urllib.request.Request(BASE + path, method="POST")
-    return json.loads(urllib.request.urlopen(req, timeout=120).read())
+def post(path, default=None):
+    try:
+        req=urllib.request.Request(BASE+path,method='POST')
+        return json.loads(urllib.request.urlopen(req,timeout=120).read())
+    except Exception as e:
+        if default is not None: return default
+        return {"error": str(e)[:100], "_path": path}
 
 report = {
     "generated_at": datetime.now().isoformat(),
@@ -33,7 +40,7 @@ print(f"Pipeline: {pp.get('generated_count')} generated, {pp.get('fixture_count'
 assets = get("/api/assets")
 funds = []
 for a in assets:
-    snap = get(f"/api/holding/snapshot/{a['code']}")
+    snap = get(f"/api/holding/snapshot/{a['code']}", {"snapshot": {"is_fixture": True, "source": "API_ERROR"}})
     s = snap.get("snapshot") or {}
     funds.append({
         "fund_code": a["code"], "fund_name": a["name"],
@@ -56,7 +63,7 @@ for i, a in enumerate(codes):
         ov = o.get("overlap", {})
         fa = next((f for f in funds if f["fund_code"] == a), {})
         fb = next((f for f in funds if f["fund_code"] == b), {})
-        is_fix = fa.get("is_fixture") or fb.get("is_fixture")
+        is_fix = bool(fa.get("is_fixture")) or bool(fb.get("is_fixture"))
         usable = not is_fix
         pair = {
             "fund_a": a, "fund_b": b,
@@ -116,8 +123,20 @@ report["daily_decision_check"] = checks
 
 # Safety
 report["safety"] = {"no_auto_trade": True, "fixture_not_live": True, "ai_no_amount": True}
-report["report_status"] = "NOT_LIVE_READY" if funds and all(f["is_fixture"] for f in funds) else "PASS"
+report["report_status"] = "NOT_LIVE_READY" if sum(1 for f in funds if f.get("is_fixture")) >= len(funds) else "PASS"
 report["live_exposure_ready"] = any(f["usable_for_live_decision"] for f in funds)
+
+# Snapshots detail
+report["snapshots"] = {f["fund_code"]: f for f in funds}
+
+# Data quality summary
+dq = {"total": len(funds), "fixture": sum(1 for f in funds if f["is_fixture"]),
+      "live_usable": sum(1 for f in funds if f["usable_for_live_decision"]),
+      "stale": sum(1 for f in funds if f["stale_days"] > 120),
+      "pairs_total": len(pairs), "pairs_fixture": report["fixture_pair_count"],
+      "live_high_risk": report["live_high_count"], "live_medium_risk": report["live_medium_count"],
+      "expl_high_risk": len(expl_high), "expl_medium_risk": len(expl_med)}
+report["data_quality"] = dq
 
 path = "F:/compound-interest-plan/reports/exposure/full_exposure_audit_20250626_v2.json"
 os.makedirs(os.path.dirname(path), exist_ok=True)
