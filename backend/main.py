@@ -732,6 +732,41 @@ def get_today_decisions(session: Session = Depends(get_session)):
         item["actual_amount"] = ud.actual_amount if ud else None
         item["skip_reason"] = ud.skip_reason if ud else ""
         item["user_note"] = ud.user_note if ud else ""
+
+        # v1.0.3: Enrich with overlap + holding data
+        snap = session.exec(select(FundHoldingSnapshot).where(FundHoldingSnapshot.fund_code == d.fund_code).order_by(FundHoldingSnapshot.updated_at.desc())).first()
+        if snap:
+            stale_days = (date.today() - datetime.fromisoformat(snap.holding_date[:10]).date()).days if snap.holding_date else 999
+            item["holding_date"] = snap.holding_date
+            item["holding_source"] = snap.source
+            item["stale_days"] = stale_days
+            item["is_fixture"] = snap.source == "local_heuristic"
+            item["usable_for_live"] = not item["is_fixture"] and stale_days <= 120
+        else:
+            item["holding_date"] = None
+            item["holding_source"] = None
+            item["stale_days"] = None
+            item["is_fixture"] = False
+            item["usable_for_live"] = False
+
+        # Find overlap with actionable funds
+        actionable = [dd for dd in decisions if dd.strategy_action in ("fixed_dca", "dynamic_dca") and dd.fund_code != d.fund_code]
+        if actionable:
+            snap_b = session.exec(select(FundHoldingSnapshot).where(FundHoldingSnapshot.fund_code == actionable[0].fund_code).order_by(FundHoldingSnapshot.updated_at.desc())).first()
+            if snap and snap_b:
+                from services.exposure_calculator import compute_fund_pair_overlap
+                overlap = compute_fund_pair_overlap(
+                    {"top10_json": snap.top10_json, "industry_distribution_json": snap.industry_distribution_json},
+                    {"top10_json": snap_b.top10_json, "industry_distribution_json": snap_b.industry_distribution_json})
+                item["overlap_status"] = overlap["overlap_level"]
+                item["overlap_score"] = overlap["top10_overlap_score"]
+                item["overlap_industry"] = overlap["industry_overlap_score"]
+                item["overlap_evidence"] = overlap.get("evidence", [])
+            else:
+                item["overlap_status"] = "DATA_MISSING"
+        else:
+            item["overlap_status"] = "N/A"
+
         items.append(item)
     first = min(items, key=lambda x: x.get("created_at", "")) if items else None
     return {"date": today, "generated": True, "generated_at": str(first.get("created_at", "")) if first else None, "count": len(items), "items": items}

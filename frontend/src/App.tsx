@@ -372,7 +372,20 @@ function App() {
                               → 最终动作：{d.strategy_action} {finAmt===0?'¥0':(finAmt!=null?'¥'+finAmt:'不输出')}
                             </div>}
                             <div style={{fontSize:11,color:'#f59e0b',marginTop:4}}>{reasonLabel}</div>
-                            <div style={{fontSize:10,color:'#52525b',marginTop:2}}>来源：{cs}，置信度：{cf}{cs==='local_rule'&&cf==='medium'?' ⚠️规则推断，后续需持仓穿透验证':''}{d.theme_bucket&&d.theme_bucket!=='未分类'?` · 主题:${d.theme_bucket}`:''}</div>
+                            {d.overlap_status && d.overlap_status!=='N/A' && <div style={{fontSize:10,color:'#6b7280',marginTop:4}}>
+                              {d.overlap_status==='DATA_MISSING'
+                                ? '持仓数据缺失，无法判断真实重叠，当前仅观察。'
+                                : `Top10重叠:${(d.overlap_score*100).toFixed(0)}% | 行业重叠:${(d.overlap_industry*100).toFixed(0)}% | ${d.overlap_status}`
+                              }
+                              {d.is_fixture && ' ⚠️规则推断/示例数据，不进入实盘建议'}
+                              {d.holding_date && <span> · 持仓日期:{d.holding_date?.slice(0,10)||'未知'}</span>}
+                              {d.stale_days>120 && <span> · ⚠️过期{d.stale_days}天</span>}
+                            </div>}
+                            <div style={{fontSize:10,color:'#52525b',marginTop:2}}>
+                              来源：{cs||'未返回'}，置信度：{cf||'未知'}
+                              {cs==='local_rule'&&cf==='medium'?' ⚠️规则推断，后续需持仓穿透验证':''}
+                              {(d.theme_bucket&&d.theme_bucket!=='未分类')?` · 主题:${d.theme_bucket}`:' · 主题:规则推断/待持仓穿透确认'}
+                            </div>
                           </div>
                           <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:12}}>
                             <span style={{color:'#71717a',fontSize:13}}>{finAmt===0?'¥0 不新增':'不新增'}</span>
