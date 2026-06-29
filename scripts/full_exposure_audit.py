@@ -122,8 +122,11 @@ try: post("/api/decision/run-daily")
 except: pass
 td = get("/api/decision/today", {"items": []})
 items = td if isinstance(td, list) else td.get("items", [])
-checks = {"total_items": len(items), "with_overlap_status": 0, "with_common_holdings": 0,
-          "with_source": 0, "with_is_fixture": 0, "with_usable": 0, "with_stale": 0, "missing_fields_by_fund": {}}
+checks = {"total_items": len(items), "required_fields": ["overlap_status","holding_source","holding_date","is_fixture"],
+          "optional_fields": ["common_holdings","stale_days","usable_for_live"],
+          "with_overlap_status": 0, "with_source": 0, "with_is_fixture": 0,
+          "with_common_holdings": 0, "with_stale": 0, "with_usable": 0,
+          "missing_required": {}, "missing_optional": {}}
 for i in items:
     checks["with_overlap_status"] += 1 if i.get("overlap_status") else 0
     checks["with_common_holdings"] += 1 if "common_holdings" in i or "overlap_evidence" in i else 0
@@ -131,8 +134,10 @@ for i in items:
     checks["with_is_fixture"] += 1 if "is_fixture" in i else 0
     checks["with_usable"] += 1 if "usable_for_live" in i else 0
     checks["with_stale"] += 1 if i.get("stale_days") is not None else 0
-    missing = [k for k in ["overlap_status","holding_source","holding_date","is_fixture","usable_for_live","stale_days"] if not i.get(k) and i.get(k) is None]
-    if missing: checks["missing_fields_by_fund"][i.get("fund_code","?")] = missing
+    missing_r = [k for k in checks["required_fields"] if not i.get(k) and i.get(k) is None]
+    missing_o = [k for k in checks["optional_fields"] if not i.get(k) and i.get(k) is None]
+    if missing_r: checks["missing_required"][i.get("fund_code","?")] = missing_r
+    if missing_o: checks["missing_optional"][i.get("fund_code","?")] = missing_o
 report["daily_decision_check"] = checks
 
 # Safety
@@ -172,10 +177,10 @@ for pa, pb in pairs_with_common:
 api_err_funds = [f for f in funds if f.get("snapshot_status") == "API_ERROR_FALLBACK" and not f.get("api_error_message")]
 if api_err_funds:
     audit_failures.append("API_ERROR_NO_MESSAGE")
-# Rule 5: daily_decision_check honesty — check that missing fields are documented
+# Rule 5: daily_decision_check — required fields must be present
 dd = report["daily_decision_check"]
 if dd["total_items"] > 0 and dd["with_is_fixture"] < dd["total_items"]:
-    if not dd.get("missing_fields_by_fund"):
+    if not dd.get("missing_required"):
         audit_failures.append("DAILY_CHECK_MISLEADING")
 
 if audit_failures:

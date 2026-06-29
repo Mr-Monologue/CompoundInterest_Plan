@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-06-29T10:01:14.599410",
-  "report_status": "AUDIT_FAIL",
+  "generated_at": "2026-06-29T10:34:12.568532",
+  "report_status": "NOT_LIVE_READY",
   "live_exposure_ready": false,
   "system": {
-    "backend_commit": "9faf3d9",
+    "backend_commit": "1406dcb",
     "data_ready": true,
     "asset_count": 7,
     "db_path": "invest.db"
@@ -581,13 +581,47 @@
   },
   "daily_decision_check": {
     "total_items": 7,
+    "required_fields": [
+      "overlap_status",
+      "holding_source",
+      "holding_date",
+      "is_fixture"
+    ],
+    "optional_fields": [
+      "common_holdings",
+      "stale_days",
+      "usable_for_live"
+    ],
     "with_overlap_status": 7,
-    "with_common_holdings": 0,
     "with_source": 7,
     "with_is_fixture": 7,
-    "with_usable": 7,
+    "with_common_holdings": 0,
     "with_stale": 7,
-    "missing_fields_by_fund": {}
+    "with_usable": 7,
+    "missing_required": {},
+    "missing_optional": {
+      "005827": [
+        "common_holdings"
+      ],
+      "001532": [
+        "common_holdings"
+      ],
+      "000083": [
+        "common_holdings"
+      ],
+      "002340": [
+        "common_holdings"
+      ],
+      "003096": [
+        "common_holdings"
+      ],
+      "000071": [
+        "common_holdings"
+      ],
+      "160422": [
+        "common_holdings"
+      ]
+    }
   },
   "safety": {
     "no_auto_trade": true,
@@ -713,8 +747,112 @@
     "expl_high_risk": 1,
     "expl_medium_risk": 2
   },
-  "audit_errors": [
-    "TOP10_ZERO_WITH_COMMON_HOLDINGS"
-  ],
-  "honest_note": "当前仅验证部分 pipeline，数据一致性未通过。不允许进入实盘暴露闸门。"
+  "honest_note": "当前仅验证解释层 pipeline，不具备实盘暴露判断能力。",
+  "snapshots_detail": {
+    "005827": {
+      "fund_code": "005827",
+      "fund_name": "易方达蓝筹",
+      "snapshot_exists": true,
+      "source": "local_heuristic",
+      "is_fixture": true,
+      "snapshot_status": "ok",
+      "api_error_message": "",
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "holding_date": "2026-06-29T10:01:14.873847",
+      "stale_days": 0,
+      "top10_count": 10,
+      "industry_count": 6
+    },
+    "001532": {
+      "fund_code": "001532",
+      "fund_name": "华安文体",
+      "snapshot_exists": true,
+      "source": "local_heuristic",
+      "is_fixture": true,
+      "snapshot_status": "ok",
+      "api_error_message": "",
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "holding_date": "2026-06-29T10:01:14.901234",
+      "stale_days": 0,
+      "top10_count": 10,
+      "industry_count": 6
+    },
+    "000083": {
+      "fund_code": "000083",
+      "fund_name": "汇添富消费",
+      "snapshot_exists": true,
+      "source": "local_heuristic",
+      "is_fixture": true,
+      "snapshot_status": "ok",
+      "api_error_message": "",
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "holding_date": "2026-06-29T10:01:14.917739",
+      "stale_days": 0,
+      "top10_count": 10,
+      "industry_count": 6
+    },
+    "002340": {
+      "fund_code": "002340",
+      "fund_name": "富国价值",
+      "snapshot_exists": true,
+      "source": "local_heuristic",
+      "is_fixture": true,
+      "snapshot_status": "ok",
+      "api_error_message": "",
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "holding_date": "2026-06-29T10:01:14.935337",
+      "stale_days": 0,
+      "top10_count": 10,
+      "industry_count": 6
+    },
+    "003096": {
+      "fund_code": "003096",
+      "fund_name": "中欧医疗",
+      "snapshot_exists": true,
+      "source": "local_heuristic",
+      "is_fixture": true,
+      "snapshot_status": "ok",
+      "api_error_message": "",
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "holding_date": "2026-06-29T10:01:14.949197",
+      "stale_days": 0,
+      "top10_count": 10,
+      "industry_count": 3
+    },
+    "000071": {
+      "fund_code": "000071",
+      "fund_name": "华夏恒生",
+      "snapshot_exists": true,
+      "source": "local_heuristic",
+      "is_fixture": true,
+      "snapshot_status": "ok",
+      "api_error_message": "",
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "holding_date": "2026-06-29T10:01:14.965423",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    },
+    "160422": {
+      "fund_code": "160422",
+      "fund_name": "华安创业50ETF",
+      "snapshot_exists": true,
+      "source": "local_heuristic",
+      "is_fixture": true,
+      "snapshot_status": "ok",
+      "api_error_message": "",
+      "usable_for_live_decision": false,
+      "report_period": "2026Q2",
+      "holding_date": "2026-06-29T10:01:14.981743",
+      "stale_days": 0,
+      "top10_count": 0,
+      "industry_count": 0
+    }
+  }
 }

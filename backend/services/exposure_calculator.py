@@ -38,11 +38,11 @@ def compute_fund_pair_overlap(fund_a: dict, fund_b: dict) -> dict:
     ind_b = json.loads(ind_b_raw) if isinstance(ind_b_raw,str) else ind_b_raw
     # Check for missing data
     if not t10a and not t10b:
-        return {"top10_overlap_score": 0.0, "industry_overlap_score": 0.0, "overlap_level": "DATA_MISSING",
-                "evidence": ["Both funds have no Top10 holding data"], "same_theme_downgrade": False}
+        return {"top10_overlap_score": 0.0, "industry_overlap_score": 0.0, "overlap_level": "EXPLANATORY_ONLY",
+                "overlap_reason": "SNAPSHOT_EMPTY", "evidence": ["Both funds have snapshot but no Top10 data"], "same_theme_downgrade": False}
     if not t10a or not t10b:
-        return {"top10_overlap_score": 0.0, "industry_overlap_score": 0.0, "overlap_level": "DATA_MISSING",
-                "evidence": ["One fund has no Top10 holding data", f"missing: {'fund_a' if not t10a else 'fund_b'}"], "same_theme_downgrade": False}
+        return {"top10_overlap_score": 0.0, "industry_overlap_score": 0.0, "overlap_level": "EXPLANATORY_ONLY",
+                "overlap_reason": "SNAPSHOT_EMPTY", "evidence": [f"One fund has no Top10 data" if t10a else "Fund A has no data" if not t10a else "Fund B has no data"], "same_theme_downgrade": False}
     t10 = top10_overlap(t10a, t10b)
     ind = industry_overlap(ind_a, ind_b)
     level = classify_overlap_level(t10, ind)
