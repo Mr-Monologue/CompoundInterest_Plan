@@ -295,7 +295,8 @@ function App() {
                   <div style={{display:'flex', gap:16, flexWrap:'wrap', fontSize:12}}>
                     <span>原始候选: <b style={{color:'#f59e0b'}}>¥{candidateTotal}</b></span>
                     <span>最终建议: <b style={{color:'#10b981'}}>¥{finalTotal}</b></span>
-                    <span>组合上限: ¥{cap}</span>
+                                        <span>组合上限: ¥{cap}</span>
+                                        <span style={{fontSize:9,color:'#f59e0b'}}>当前为重仓股重叠预警，不是完整持仓穿透</span>
                     {downgraded.length>0 && <span style={{color:'#f97316'}}>降级: {downgraded.length}只</span>}
                   </div>
                   {finalTotal < candidateTotal && <div style={{fontSize:10, color:'#71717a', marginTop:6}}>最终建议低于原始候选，原因：{(():string=>{

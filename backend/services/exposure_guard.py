@@ -144,11 +144,12 @@ def apply_exposure_guard(
                 b_stocks = get_fund_top_holdings(session, candidates[j]["fund_code"])
                 overlap = calculate_overlap(a_stocks, b_stocks)
                 if overlap > 0.5:
-                    # Downgrade lower priority one
+                    # v1.1.6: top10_only data → observe/human_review only, NO forced amount=0
                     candidates[j]["downgraded_from_action"] = candidates[j]["strategy_action"]
                     candidates[j]["strategy_action"] = "observe"
-                    candidates[j]["recommended_amount"] = 0.0
-                    candidates[j]["downgrade_reason"] = f"与{candidates[i]['fund_name']}持仓重叠{overlap*100:.0f}%"
+                    candidates[j]["exposure_status"] = "REVIEW_REQUIRED" if overlap > 0.7 else "WATCH"
+                    candidates[j]["downgrade_reason"] = f"与{candidates[i]['fund_name']}重仓重叠{overlap*100:.0f}%(top10 only, 不强制调金额)"
+                    # Do NOT set recommended_amount=0 — keep original for review
 
     # 4. Portfolio amount cap
     total_rec = sum(c.get("recommended_amount", 0) or 0 for c in candidates)

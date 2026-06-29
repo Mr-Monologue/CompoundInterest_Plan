@@ -204,8 +204,11 @@ elif sum(1 for f in funds if f.get("usable_for_live_decision")) > 0:
         report["report_status"] = "LIVE_READY"
         report["honest_note"] = "全部基金实盘可用。"
     else:
-        report["report_status"] = "PARTIAL_LIVE_READY"
+        live_count = sum(1 for f in funds if f.get("usable_for_live_decision"))
+        report["report_status"] = "TOP10_ONLY_READY" if live_count > 0 else "PARTIAL_LIVE_READY"
         report["live_exposure_ready"] = False
+        report["full_exposure_ready"] = False
+        report["heavy_position_overlap_ready"] = live_count >= 2
         report["honest_note"] = f"部分基金实盘可用（{sum(1 for f in funds if f.get('usable_for_live_decision'))}/{len(funds)}），行业数据缺失基金不参与industry overlap。"
 elif all(f["is_fixture"] for f in funds):
     report["honest_note"] = "当前仅验证解释层 pipeline，不具备实盘暴露判断能力。"
