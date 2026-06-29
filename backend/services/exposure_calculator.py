@@ -58,5 +58,5 @@ def compute_fund_pair_overlap(fund_a: dict, fund_b: dict) -> dict:
             "coverage_level": coverage, "min_coverage_level": coverage,
             "top_holding_overlap_score": round(t10,4), "overlap_confidence": "medium" if coverage == "top10_only" else "high",
             "limitation": "仅基于前十大持仓，可能低估真实组合重叠" if coverage == "top10_only" else "",
-            "evidence": [f"Top10 Jaccard: {t10:.2f}", f"Industry cosine: {ind:.2f}"], "same_theme_downgrade": t10>=0.5 or level=="high",
+            "evidence": [f"Top10 Jaccard: {t10:.2f}"] + ([f"Industry cosine: {ind:.2f}"] if ind is not None else ["Industry: DATA_MISSING"]), "same_theme_downgrade": t10>=0.5 or level=="high",
             "computed_at": datetime.now().isoformat()}
