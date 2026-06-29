@@ -1,6 +1,7 @@
 """Full Exposure Audit — v1.0.4.1 honest report generator."""
 import urllib.request, json, os, time, sqlite3
 from datetime import datetime
+from pathlib import Path
 
 BASE = "http://127.0.0.1:9600"
 DB_PATH = "F:/compound-interest-plan/invest.db"
@@ -62,28 +63,46 @@ for a in assets:
     })
 report["funds"] = funds
 
-# Overlap pairs
+# Overlap pairs — compute DIRECTLY from snapshot data (not API, avoids old-backend issue)
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+from services.exposure_calculator import compute_fund_pair_overlap as _calc_overlap
+
+def _snapshot_data(code):
+    """Get snapshot data dict for direct calculator call."""
+    snap = get(f"/api/holding/snapshot/{code}", {"snapshot": None})
+    s = snap.get("snapshot") if snap else None
+    if not s:
+        return {"top10_json": "[]", "industry_distribution_json": "{}"}
+    return {
+        "top10_json": json.dumps(s.get("top10", [])),
+        "industry_distribution_json": json.dumps(s.get("industry", {})),
+    }
+
+# Snapshot details from API response
+snapshot_cache = {a["code"]: a for a in assets}
 codes = [a["code"] for a in assets]
 pairs = []
 live_high = []; live_med = []; expl_high = []; expl_med = []; fixture_pairs = 0
 for i, a in enumerate(codes):
     for b in codes[i+1:]:
-        o = get(f"/api/analysis/overlap?fund_a={a}&fund_b={b}")
-        ov = o.get("overlap", {})
         fa = next((f for f in funds if f["fund_code"] == a), {})
         fb = next((f for f in funds if f["fund_code"] == b), {})
         is_fix = bool(fa.get("is_fixture")) or bool(fb.get("is_fixture"))
         usable_top10 = fa.get("top10_usable") and fb.get("top10_usable")
         ind_missing = not fa.get("industry_usable") or not fb.get("industry_usable")
         usable = not is_fix
+        # Direct calculator call
+        ov = _calc_overlap(_snapshot_data(a), _snapshot_data(b))
         pair = {
             "fund_a": a, "fund_b": b,
             "overlap_status": "EXPLANATORY_ONLY" if is_fix else ov.get("overlap_level", ""),
-            "explanatory_overlap_level": ov.get("overlap_level"),
-            "live_overlap_level": ov.get("live_overlap_level", ov.get("overlap_level")),
-            "heavy_position_overlap_level": ov.get("heavy_position_overlap_level", ov.get("overlap_level")),
+            "explanatory_overlap_level": ov.get("heavy_position_overlap_level", ov.get("overlap_level")),
+            "live_overlap_level": ov.get("live_overlap_level", "unknown"),
+            "heavy_position_overlap_level": ov.get("heavy_position_overlap_level"),
             "top10_overlap_score": ov.get("top10_overlap_score"),
             "industry_overlap_score": ov.get("industry_overlap_score"),
+            "overlap_scope": ov.get("overlap_scope", "heavy_position_only"),
             "industry_status": "INDUSTRY_DATA_MISSING" if ind_missing else "ok",
             "top10_live_usable": usable_top10,
             "common_holdings": ov.get("common_holdings", []),
@@ -94,13 +113,14 @@ for i, a in enumerate(codes):
             "data_quality": "fixture" if is_fix else ("stale" if fa.get("stale_days", 0) > 120 else "ok"),
         }
         pairs.append(pair)
+        level = ov.get("heavy_position_overlap_level", ov.get("overlap_level"))
         if is_fix:
             fixture_pairs += 1
-            if ov.get("overlap_level") == "high": expl_high.append(f"{a}:{b}")
-            elif ov.get("overlap_level") == "medium": expl_med.append(f"{a}:{b}")
+            if level == "high": expl_high.append(f"{a}:{b}")
+            elif level == "medium": expl_med.append(f"{a}:{b}")
         else:
-            if ov.get("overlap_level") == "high": live_high.append(f"{a}:{b}")
-            elif ov.get("overlap_level") == "medium": live_med.append(f"{a}:{b}")
+            if level == "high": live_high.append(f"{a}:{b}")
+            elif level == "medium": live_med.append(f"{a}:{b}")
 
 report["overlap_pairs"] = pairs
 report["high_risk_pairs"] = live_high
