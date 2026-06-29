@@ -161,11 +161,13 @@ if report["portfolio_exposure"]["fund_count_in_themes"] > len(assets):
 inconsistent = [p for p in pairs if not p.get("snapshot_consistent")]
 if inconsistent:
     audit_failures.append("SNAPSHOT_OVERLAP_INCONSISTENT")
-# Rule 3: top10=0 with any pair having common_holdings
-any_t10_zero = any(f.get("top10_count", 0) == 0 for f in funds)
-any_common = any(p.get("common_holdings") for p in pairs)
-if any_t10_zero and any_common:
-    audit_failures.append("TOP10_ZERO_WITH_COMMON_HOLDINGS")
+# Rule 3: a fund with top10=0 must not appear in pair with common_holdings
+top10_zero_funds = {f["fund_code"] for f in funds if f.get("top10_count", 0) == 0}
+pairs_with_common = [(p["fund_a"], p["fund_b"]) for p in pairs if p.get("common_holdings")]
+for pa, pb in pairs_with_common:
+    if pa in top10_zero_funds or pb in top10_zero_funds:
+        audit_failures.append("TOP10_ZERO_WITH_COMMON_HOLDINGS")
+        break
 # Rule 4: API_ERROR_FALLBACK must have error message
 api_err_funds = [f for f in funds if f.get("snapshot_status") == "API_ERROR_FALLBACK" and not f.get("api_error_message")]
 if api_err_funds:
@@ -184,6 +186,9 @@ elif all(f["is_fixture"] for f in funds):
     report["honest_note"] = "当前仅验证解释层 pipeline，不具备实盘暴露判断能力。"
 else:
     report["honest_note"] = ""
+
+# Build snapshot details
+report["snapshots_detail"] = {f["fund_code"]: f for f in funds}
 
 path = "F:/compound-interest-plan/reports/exposure/full_exposure_audit_20250626_v2.json"
 os.makedirs(os.path.dirname(path), exist_ok=True)
