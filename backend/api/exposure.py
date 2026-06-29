@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 import json
+from datetime import datetime, date
 
 from db.database import get_session
 from db.models import Asset, FundHoldingSnapshot, FundExposureAnalysis, FundOverlap
@@ -122,12 +123,18 @@ def get_overlap(fund_a: str = "", fund_b: str = "", session: Session = Depends(g
 
 @router.get("/portfolio/exposure")
 def get_portfolio_exposure(session: Session = Depends(get_session)):
-    analyses = session.exec(select(FundExposureAnalysis).order_by(FundExposureAnalysis.created_at.desc())).all()
     themes = {}
-    for a in analyses:
-        tb = a.theme_bucket or "未分类"
+    seen = set()
+    snapshots = session.exec(select(FundHoldingSnapshot).order_by(FundHoldingSnapshot.updated_at.desc())).all()
+    for s in snapshots:
+        if s.fund_code in seen: continue
+        seen.add(s.fund_code)
+        tb = "未分类"
+        analysis = session.exec(select(FundExposureAnalysis).where(FundExposureAnalysis.fund_code == s.fund_code).order_by(FundExposureAnalysis.created_at.desc())).first()
+        if analysis and analysis.theme_bucket:
+            tb = analysis.theme_bucket
         themes[tb] = themes.get(tb, 0) + 1
-    return {"ok": True, "theme_exposure": themes}
+    return {"ok": True, "theme_exposure": themes, "total_funds": len(seen)}
 
 
 @router.get("/holding/snapshot/{fund_code}")
