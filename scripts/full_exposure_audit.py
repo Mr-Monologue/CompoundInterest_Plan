@@ -43,16 +43,22 @@ for a in assets:
     snap = get(f"/api/holding/snapshot/{a['code']}", {"snapshot": {"is_fixture": True, "source": "API_ERROR_FALLBACK"}, "error": "API 500 fallback"})
     s = snap.get("snapshot") or {}
     api_err = snap.get("error", "")
+    src = s.get("source", "API_ERROR")
+    is_fix = api_err or (src not in ("akshare", "eastmoney"))
+    t10c = len(s.get("top10", []))
+    indc = len(s.get("industry", {}))
     funds.append({
         "fund_code": a["code"], "fund_name": a["name"],
-        "snapshot_exists": s != {}, "source": s.get("source", "API_ERROR"),
-        "is_fixture": True if api_err or s.get("is_fixture") in (True, None) else s.get("is_fixture", True),
-        "snapshot_status": "API_ERROR_FALLBACK" if api_err else ("ok" if s.get("source") != "API_ERROR" else "API_ERROR"),
+        "snapshot_exists": s != {}, "source": src,
+        "is_fixture": is_fix, "is_fallback": src == "local_heuristic" or is_fix,
+        "snapshot_status": "API_ERROR_FALLBACK" if api_err else ("FALLBACK_OK" if is_fix else "REAL_SOURCE_OK"),
         "api_error_message": api_err,
-        "usable_for_live_decision": False if api_err else (not s.get("is_fixture", True) and not s.get("stale", True)),
+        "top10_usable": not is_fix and t10c >= 5,
+        "industry_usable": not is_fix and indc >= 3,
+        "usable_for_live_decision": not is_fix and t10c >= 5,
         "report_period": s.get("report_period", ""), "holding_date": s.get("holding_date", ""),
         "stale_days": s.get("stale_days", 0),
-        "top10_count": len(s.get("top10", [])), "industry_count": len(s.get("industry", {})),
+        "top10_count": t10c, "industry_count": indc,
     })
 report["funds"] = funds
 
@@ -67,17 +73,22 @@ for i, a in enumerate(codes):
         fa = next((f for f in funds if f["fund_code"] == a), {})
         fb = next((f for f in funds if f["fund_code"] == b), {})
         is_fix = bool(fa.get("is_fixture")) or bool(fb.get("is_fixture"))
+        usable_top10 = fa.get("top10_usable") and fb.get("top10_usable")
+        ind_missing = not fa.get("industry_usable") or not fb.get("industry_usable")
         usable = not is_fix
         pair = {
             "fund_a": a, "fund_b": b,
             "overlap_status": "EXPLANATORY_ONLY" if is_fix else ov.get("overlap_level", ""),
             "explanatory_overlap_level": ov.get("overlap_level"),
             "live_overlap_level": "unknown" if is_fix else ov.get("overlap_level"),
-            "top10_overlap_score": ov.get("top10_overlap_score"), "industry_overlap_score": ov.get("industry_overlap_score"),
-            "overlap_level": ov.get("overlap_level"), "common_holdings": ov.get("common_holdings", []),
+            "top10_overlap_score": ov.get("top10_overlap_score"),
+            "industry_overlap_score": ov.get("top10_overlap_score"),
+            "industry_status": "INDUSTRY_DATA_MISSING" if ind_missing else "ok",
+            "top10_live_usable": usable_top10,
+            "common_holdings": ov.get("common_holdings", []),
             "source_a": fa.get("source"), "source_b": fb.get("source"),
             "is_fixture_a": fa.get("is_fixture"), "is_fixture_b": fb.get("is_fixture"),
-            "usable_for_live_decision": usable, "report_period": ov.get("report_period", ""),
+            "usable_for_live_decision": usable,"report_period": ov.get("report_period", ""),
             "snapshot_consistent": bool(fa.get("top10_count") or not ov.get("common_holdings")),
             "data_quality": "fixture" if is_fix else ("stale" if fa.get("stale_days", 0) > 120 else "ok"),
         }
@@ -98,7 +109,7 @@ report["explanatory_medium_risk_pairs"] = expl_med
 report["fixture_pair_count"] = fixture_pairs
 report["live_high_count"] = len(live_high)
 report["live_medium_count"] = len(live_med)
-report["data_missing_pair_count"] = sum(1 for p in pairs if p["overlap_level"] == "DATA_MISSING")
+report["data_missing_pair_count"] = sum(1 for p in pairs if p.get("explanatory_overlap_level") == "DATA_MISSING")
 
 # Portfolio exposure — count unique funds per theme
 pf = get("/api/portfolio/exposure", {"theme_exposure": {}})
@@ -113,8 +124,9 @@ report["portfolio_exposure"] = {
     "classified_count": 0, "unclassified_count": len(seen),
     "themes": pf.get("theme_exposure", {}),
     "fund_count_in_themes": min(sum(pf.get("theme_exposure", {}).values()), len(assets)),
-    "source_mix": {"local_heuristic": len(assets)},
-    "live_usable_count": 0, "fixture_count": len(assets),
+    "source_mix": {s: sum(1 for f in funds if f["source"] == s) for s in set(f["source"] for f in funds)},
+    "live_usable_count": sum(1 for f in funds if f.get("usable_for_live_decision")),
+    "fixture_count": sum(1 for f in funds if f.get("is_fixture")),
 }
 
 # Daily decision check
@@ -186,7 +198,15 @@ if dd["total_items"] > 0 and dd["with_is_fixture"] < dd["total_items"]:
 if audit_failures:
     report["report_status"] = "AUDIT_FAIL"
     report["audit_errors"] = audit_failures
-    report["honest_note"] = "当前仅验证部分 pipeline，数据一致性未通过。不允许进入实盘暴露闸门。"
+    report["honest_note"] = "当前仅验证部分 pipeline，数据一致性未通过。"
+elif sum(1 for f in funds if f.get("usable_for_live_decision")) > 0:
+    if all(f.get("usable_for_live_decision") for f in funds):
+        report["report_status"] = "LIVE_READY"
+        report["honest_note"] = "全部基金实盘可用。"
+    else:
+        report["report_status"] = "PARTIAL_LIVE_READY"
+        report["live_exposure_ready"] = False
+        report["honest_note"] = f"部分基金实盘可用（{sum(1 for f in funds if f.get('usable_for_live_decision'))}/{len(funds)}），行业数据缺失基金不参与industry overlap。"
 elif all(f["is_fixture"] for f in funds):
     report["honest_note"] = "当前仅验证解释层 pipeline，不具备实盘暴露判断能力。"
 else:
