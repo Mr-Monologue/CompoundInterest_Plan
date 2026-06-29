@@ -27,8 +27,16 @@ def generate_snapshot_from_local(fund_code: str, fund_name: str, session: Sessio
         session.add(s)
     session.commit()
 
-    return {"fund_code": fund_code, "report_period": period, "top10": data["top10"],
-            "industry": data["industry"], "source": data["source"], "stale_days": 0}
+    return {
+        "fund_code": fund_code, "report_period": period,
+        "top10": data["top10"], "industry": data["industry"],
+        "source": data["source"], "source_name": data.get("source_name", data["source"]),
+        "is_fixture": data.get("is_fixture", True), "is_fallback": data.get("is_fallback", True),
+        "snapshot_status": "OK" if data.get("top10") else "SNAPSHOT_EMPTY",
+        "usable_for_live_decision": False,
+        "stale_days": 0, "fetched_at": now, "top10_count": len(data["top10"]),
+        "industry_count": len(data["industry"]),
+    }
 
 
 def run_pipeline_for_all(session: Session) -> dict:
@@ -46,7 +54,8 @@ def run_pipeline_for_all(session: Session) -> dict:
 
 def _local_fund_holdings(fund_code: str, fund_name: str) -> dict:
     """Local heuristics for fund holdings when live data unavailable.
-    In production, replace with AKShare/API calls."""
+    In production, replace with AKShare/eastmoney API calls."""
+    base = {"source": "local_heuristic", "source_name": "本地规则推断（非真实披露）", "is_fixture": True, "is_fallback": True}
     holdings = {
         "000083": {"top10": [{"name":"贵州茅台","pct":9.8},{"name":"五粮液","pct":8.5},{"name":"泸州老窖","pct":6.2},{"name":"伊利股份","pct":5.1},{"name":"海天味业","pct":4.3},{"name":"美的集团","pct":3.9},{"name":"格力电器","pct":3.5},{"name":"比亚迪","pct":3.1},{"name":"牧原股份","pct":2.8},{"name":"双汇发展","pct":2.4}], "industry":{"食品饮料":35,"家电":18,"汽车":10,"农业":8,"医药":5,"其他":24}},
         "001532": {"top10": [{"name":"贵州茅台","pct":7.2},{"name":"五粮液","pct":6.1},{"name":"宁德时代","pct":5.5},{"name":"美的集团","pct":4.8},{"name":"中国平安","pct":4.2},{"name":"招商银行","pct":3.9},{"name":"腾讯控股","pct":3.5},{"name":"药明康德","pct":3.2},{"name":"隆基绿能","pct":2.9},{"name":"比亚迪","pct":2.5}], "industry":{"消费":25,"科技":22,"金融":18,"新能源":12,"医药":8,"其他":15}},
@@ -56,4 +65,4 @@ def _local_fund_holdings(fund_code: str, fund_name: str) -> dict:
         "000032": {"top10": [{"name":"国债2301","pct":15},{"name":"国开债2302","pct":12},{"name":"农发债2301","pct":10},{"name":"中期票据","pct":8},{"name":"企业债AAA","pct":7},{"name":"商业银行债","pct":6},{"name":"短融AAA","pct":5},{"name":"可转债","pct":4},{"name":"ABS优先级","pct":3},{"name":"货币基金","pct":2}], "industry":{"国债":30,"金融债":25,"信用债":20,"其他":25}},
     }
     fund_data = holdings.get(fund_code, {"top10": [], "industry": {}})
-    return {"source": "local_heuristic", "top10": fund_data.get("top10", []), "industry": fund_data.get("industry", {})}
+    return {**base, "top10": fund_data.get("top10", []), "industry": fund_data.get("industry", {})}
