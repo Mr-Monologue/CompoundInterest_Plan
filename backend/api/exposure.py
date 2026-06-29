@@ -8,7 +8,7 @@ from db.database import get_session
 from db.models import Asset, FundHoldingSnapshot, FundExposureAnalysis, FundOverlap
 from services.ai_exposure_analyst import analyze_fund_exposure
 from services.exposure_calculator import compute_fund_pair_overlap
-from services.holding_snapshot import generate_snapshot_from_local, run_pipeline_for_all
+from services.holding_snapshot import generate_snapshot, run_pipeline_for_all
 
 router = APIRouter(prefix="/api")
 

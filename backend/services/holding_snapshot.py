@@ -1,60 +1,98 @@
-"""v1.0.2 Holding Snapshot Pipeline — populate fund_holding_snapshot from various sources."""
+"""v1.1.1 Holding Snapshot Pipeline — real source integration."""
 import json, os
 from datetime import datetime, date
 from sqlmodel import Session, select
 from db.models import FundHoldingSnapshot, Asset
 
-def generate_snapshot_from_local(fund_code: str, fund_name: str, session: Session) -> dict:
-    """Generate a holding snapshot from local heuristics when AKShare is unavailable."""
+def _try_akshare(fund_code: str) -> dict:
+    """Try fetching from AKShare. Returns None on failure."""
+    try:
+        import akshare as ak
+        # Fetch fund portfolio
+        df = ak.fund_portfolio_hold_em(symbol=fund_code, date=datetime.now().strftime("%Y"))
+        if df is not None and len(df) > 0:
+            top10 = []
+            for _, row in df.head(10).iterrows():
+                top10.append({"name": str(row.get("股票名称", "")), "pct": float(row.get("占净值比例", 0))})
+            return {
+                "source": "akshare", "source_name": "AKShare/东方财富基金持仓",
+                "is_fixture": False, "is_fallback": False,
+                "top10": top10, "industry": {},
+                "report_period": str(df.iloc[0].get("季度", "")) if len(df) > 0 else "",
+                "attempted_source": "akshare",
+            }
+    except Exception as e:
+        return {"attempted_source": "akshare", "error": str(e)[:100]}
+    return None
+
+
+def generate_snapshot(fund_code: str, fund_name: str, session: Session) -> dict:
+    """Try real sources first, fall back to local heuristics."""
+    attempted = []
+
+    # 1. Try AKShare
+    akshare_result = _try_akshare(fund_code)
+    attempted.append("akshare")
+    if akshare_result and "source" in akshare_result:
+        data = akshare_result
+        data["attempted_sources"] = attempted
+        data["snapshot_status"] = "REAL_SOURCE_OK"
+        data["usable_for_live_decision"] = len(data["top10"]) >= 5
+        return _save_and_return(fund_code, fund_name, data, session)
+
+    # 2. Fallback: local heuristic
     data = _local_fund_holdings(fund_code, fund_name)
+    data["attempted_sources"] = attempted
+    data["snapshot_status"] = "FALLBACK_OK" if data.get("top10") else "SNAPSHOT_EMPTY"
+    data["usable_for_live_decision"] = False
+    if akshare_result and "error" in akshare_result:
+        data["source_error"] = akshare_result.get("error")
+    return _save_and_return(fund_code, fund_name, data, session)
+
+
+def _save_and_return(fund_code: str, fund_name: str, data: dict, session: Session) -> dict:
     now = datetime.now().isoformat()
-    period = f"{datetime.now().year}Q{(datetime.now().month-1)//3+1}"
-
+    period = data.get("report_period", f"{datetime.now().year}Q{(datetime.now().month-1)//3+1}")
     existing = session.exec(select(FundHoldingSnapshot).where(
-        FundHoldingSnapshot.fund_code == fund_code,
-        FundHoldingSnapshot.report_period == period
-    )).first()
-
+        FundHoldingSnapshot.fund_code == fund_code, FundHoldingSnapshot.report_period == period)).first()
     if existing:
         existing.top10_json = json.dumps(data["top10"], ensure_ascii=False)
-        existing.industry_distribution_json = json.dumps(data["industry"], ensure_ascii=False)
+        existing.industry_distribution_json = json.dumps(data.get("industry", {}), ensure_ascii=False)
         existing.updated_at = datetime.now()
         existing.source = data["source"]
     else:
         s = FundHoldingSnapshot(fund_code=fund_code, report_period=period, holding_date=now,
                                 source=data["source"], top10_json=json.dumps(data["top10"], ensure_ascii=False),
-                                industry_distribution_json=json.dumps(data["industry"], ensure_ascii=False))
+                                industry_distribution_json=json.dumps(data.get("industry", {}), ensure_ascii=False))
         session.add(s)
     session.commit()
-
     return {
         "fund_code": fund_code, "report_period": period,
-        "top10": data["top10"], "industry": data["industry"],
+        "top10": data["top10"], "industry": data.get("industry", {}),
         "source": data["source"], "source_name": data.get("source_name", data["source"]),
         "is_fixture": data.get("is_fixture", True), "is_fallback": data.get("is_fallback", True),
-        "snapshot_status": "OK" if data.get("top10") else "SNAPSHOT_EMPTY",
-        "usable_for_live_decision": False,
-        "stale_days": 0, "fetched_at": now, "top10_count": len(data["top10"]),
-        "industry_count": len(data["industry"]),
+        "snapshot_status": data.get("snapshot_status", "FALLBACK_OK"),
+        "usable_for_live_decision": data.get("usable_for_live_decision", False),
+        "stale_days": 0, "fetched_at": now,
+        "top10_count": len(data["top10"]), "industry_count": len(data.get("industry", {})),
+        "attempted_sources": data.get("attempted_sources", []),
+        "source_error": data.get("source_error", ""),
     }
 
 
 def run_pipeline_for_all(session: Session) -> dict:
-    """Generate snapshots for all funds."""
     assets = session.exec(select(Asset)).all()
     results = {}
     for a in assets:
         try:
-            r = generate_snapshot_from_local(a.code, a.name, session)
-            results[a.code] = r.get("source", "error")
+            r = generate_snapshot(a.code, a.name, session)
+            results[a.code] = {"source": r["source"], "status": r["snapshot_status"], "attempted": r.get("attempted_sources", [])}
         except Exception as e:
-            results[a.code] = f"error: {e}"
+            results[a.code] = {"source": "error", "status": "PARSE_ERROR", "error": str(e)[:100]}
     return {"ok": True, "results": results}
 
 
 def _local_fund_holdings(fund_code: str, fund_name: str) -> dict:
-    """Local heuristics for fund holdings when live data unavailable.
-    In production, replace with AKShare/eastmoney API calls."""
     base = {"source": "local_heuristic", "source_name": "本地规则推断（非真实披露）", "is_fixture": True, "is_fallback": True}
     holdings = {
         "000083": {"top10": [{"name":"贵州茅台","pct":9.8},{"name":"五粮液","pct":8.5},{"name":"泸州老窖","pct":6.2},{"name":"伊利股份","pct":5.1},{"name":"海天味业","pct":4.3},{"name":"美的集团","pct":3.9},{"name":"格力电器","pct":3.5},{"name":"比亚迪","pct":3.1},{"name":"牧原股份","pct":2.8},{"name":"双汇发展","pct":2.4}], "industry":{"食品饮料":35,"家电":18,"汽车":10,"农业":8,"医药":5,"其他":24}},
