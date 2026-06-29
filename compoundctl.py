@@ -347,6 +347,18 @@ def update_apply(confirm=False):
     steps.append({"step": "restart", "result": rr})
     return {"steps": steps, "all_ok": all(s.get("ok", True) for s in steps)}
 
+
+def doctor():
+    r = {"akshare_installed": False, "network_available": False}
+    try: import akshare; r["akshare_installed"] = True
+    except: pass
+    try:
+        import urllib.request; urllib.request.urlopen("https://api.deepseek.com", timeout=5)
+        r["network_available"] = True
+    except: pass
+    return r
+
+
 # CLI
 if __name__ == "__main__":
     p = argparse.ArgumentParser(prog="compoundctl")
@@ -360,6 +372,7 @@ if __name__ == "__main__":
     sp.add_parser("open", help="Open GUI in browser")
     sp.add_parser("demo", help="Generate exposure demo data")
     sp.add_parser("daily", help="Generate today plan")
+    sp.add_parser("doctor", help="Runtime health check")
 
     up = sp.add_parser("update-check", help="Check for updates")
     ua = sp.add_parser("update-apply", help="Apply updates")
@@ -370,6 +383,7 @@ if __name__ == "__main__":
     handlers = {"start": start, "stop": stop, "restart": lambda: (stop(), start()),
                 "status": status, "repair": repair, "open": open_gui, "demo": demo,
                 "daily": daily,
+                "doctor": doctor,
                 "update-check": update_check,
                 "update-apply": lambda: update_apply(args.confirm if hasattr(args,'confirm') else False)}
 
