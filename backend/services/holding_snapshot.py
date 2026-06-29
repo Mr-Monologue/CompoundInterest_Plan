@@ -63,7 +63,10 @@ def _save_and_return(fund_code: str, fund_name: str, data: dict, session: Sessio
     else:
         s = FundHoldingSnapshot(fund_code=fund_code, report_period=period, holding_date=now,
                                 source=data["source"], top10_json=json.dumps(data["top10"], ensure_ascii=False),
-                                industry_distribution_json=json.dumps(data.get("industry", {}), ensure_ascii=False))
+                                industry_distribution_json=json.dumps(data.get("industry", {}), ensure_ascii=False),
+                                holding_count=len(data["top10"]), holding_coverage_level="top10_only",
+                                stock_weight_coverage=sum(h.get("pct",0) for h in data["top10"]),
+                                coverage_source=data["source"])
         session.add(s)
     session.commit()
     return {

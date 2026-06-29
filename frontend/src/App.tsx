@@ -377,6 +377,7 @@ function App() {
                                 ? '持仓数据缺失，无法判断真实重叠，当前仅观察。'
                                 : <>
                                     Top10重叠:{(d.overlap_score*100).toFixed(0)}% | 行业重叠:{(d.overlap_industry*100).toFixed(0)}% | 综合:{d.overlap_status}
+                                    <div style={{color:'#f59e0b',fontSize:9,marginTop:2}}>仅基于前十大持仓，可能低估真实组合重叠</div>
                                     {d.is_fixture && d.overlap_industry>=0.8 && d.overlap_status!=='high' ? ' — 因数据来源为规则推断/示例数据，综合等级未提升为high' : ''}
                                     {d.overlap_evidence?.length>0 && <div style={{color:'#52525b',marginTop:2}}>{d.overlap_evidence.join(', ')}</div>}
                                   </>

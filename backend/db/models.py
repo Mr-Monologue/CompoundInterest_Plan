@@ -238,6 +238,11 @@ class FundHoldingSnapshot(SQLModel, table=True):
     top10_json: str = "[]"
     industry_distribution_json: str = "{}"
     updated_at: datetime = Field(default_factory=datetime.now)
+    # v1.1.4 Coverage
+    holding_count: int = 0
+    holding_coverage_level: str = "unknown"
+    stock_weight_coverage: float = 0.0
+    coverage_source: str = ""
 
 
 class FundExposureAnalysis(SQLModel, table=True):
