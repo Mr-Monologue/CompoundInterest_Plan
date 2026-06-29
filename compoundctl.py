@@ -204,9 +204,10 @@ def stop():
             results[name] = "PORT_CONFLICT — port occupied by unknown process, not killing"
         else:
             results[name] = "STOPPED"
-    # Clear state
+    # Clear state for managed services
     for k in list(state.keys()):
-        if state.get(k, {}).get("started_by") == "compoundctl":
+        v = state.get(k, {})
+        if isinstance(v, dict) and v.get("started_by") == "compoundctl":
             del state[k]
     _write_state(state)
     return results
