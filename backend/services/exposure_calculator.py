@@ -44,10 +44,16 @@ def compute_fund_pair_overlap(fund_a: dict, fund_b: dict) -> dict:
         return {"top10_overlap_score": 0.0, "industry_overlap_score": 0.0, "overlap_level": "EXPLANATORY_ONLY",
                 "overlap_reason": "SNAPSHOT_EMPTY", "evidence": [f"One fund has no Top10 data" if t10a else "Fund A has no data" if not t10a else "Fund B has no data"], "same_theme_downgrade": False}
     t10 = top10_overlap(t10a, t10b)
-    ind = industry_overlap(ind_a, ind_b)
-    level = classify_overlap_level(t10, ind)
+    ind = industry_overlap(ind_a, ind_b) if ind_a and ind_b else None
+    ind_missing = not ind_a or not ind_b or ind is None
+    level = classify_overlap_level(t10, ind if ind else 0.0)
     coverage = "top10_only"
-    return {"top10_overlap_score": round(t10,4), "industry_overlap_score": round(ind,4), "overlap_level": level,
+    return {"top10_overlap_score": round(t10,4),
+            "industry_overlap_score": round(ind,4) if ind is not None else None,
+            "industry_status": "INDUSTRY_DATA_MISSING" if ind_missing else "ok",
+            "overlap_level": level,
+            "heavy_position_overlap_level": level,
+            "live_overlap_level": "unknown" if ind_missing else level,
             "overlap_scope": "heavy_position_only" if coverage == "top10_only" else "expanded",
             "coverage_level": coverage, "min_coverage_level": coverage,
             "top_holding_overlap_score": round(t10,4), "overlap_confidence": "medium" if coverage == "top10_only" else "high",
