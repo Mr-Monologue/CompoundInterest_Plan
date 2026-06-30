@@ -781,8 +781,20 @@ def get_today_decisions(session: Session = Depends(get_session)):
                 item["human_review_reason"] = "Top10 重仓股存在重叠，进入观察/人工复核；不直接改变建议金额。" if overlap.get("overlap_level") in ("medium","high") else ""
             else:
                 item["overlap_status"] = "DATA_MISSING"
+                item["coverage_level"] = "unknown"
+                item["overlap_scope"] = "none"
+                item["heavy_position_overlap_level"] = None
+                item["industry_status"] = "INDUSTRY_DATA_MISSING"
+                item["limitation"] = "持仓数据缺失，无法计算重叠"
+                item["common_holdings"] = []
         else:
             item["overlap_status"] = "N/A"
+            item["coverage_level"] = "N/A"
+            item["overlap_scope"] = "N/A"
+            item["heavy_position_overlap_level"] = None
+            item["industry_status"] = "N/A"
+            item["limitation"] = "无可比对的基金对"
+            item["common_holdings"] = []
 
         items.append(item)
     first = min(items, key=lambda x: x.get("created_at", "")) if items else None
