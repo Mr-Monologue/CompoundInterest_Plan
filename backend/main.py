@@ -124,8 +124,11 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)):
 # 3. 行情与建议 (实时)
 @app.get("/api/advice/{code}")
 def get_advice(code: str, session: Session = Depends(get_session)):
-    from services.market import risk_guard
-    data = get_instant_analysis(code, session)
+    try:
+        from services.market import risk_guard
+        data = get_instant_analysis(code, session)
+    except Exception:
+        return {"ok": False, "reason": "legacy endpoint", "next_action": "use /api/decision/today"}
 
     # Add risk_guard + action_allowed
     if data.get("action") != "ERROR":
@@ -428,6 +431,9 @@ def sync_holdings(code: str, session: Session = Depends(get_session)):
 
 # === API: 获取全组合的穿透式行业分布 ===
 @app.get("/api/analysis/industry")
+def get_industry_legacy():
+    return {"ok": True, "industries": {}, "note": "use /api/portfolio/exposure"}
+@app.get("/api/analysis/industry-backup")
 def get_industry_analysis(session: Session = Depends(get_session)):
     assets = session.exec(select(Asset)).all()
 
