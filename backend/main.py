@@ -762,6 +762,17 @@ def get_today_decisions(session: Session = Depends(get_session)):
                 item["overlap_score"] = overlap["top10_overlap_score"]
                 item["overlap_industry"] = overlap["industry_overlap_score"]
                 item["overlap_evidence"] = overlap.get("evidence", [])
+                # v1.2: coverage + scope fields
+                item["coverage_level"] = overlap.get("coverage_level", "top10_only")
+                item["overlap_scope"] = overlap.get("overlap_scope", "heavy_position_only")
+                item["stock_weight_coverage"] = getattr(snap, "stock_weight_coverage", 0) if snap else 0
+                item["heavy_position_overlap_level"] = overlap.get("heavy_position_overlap_level")
+                item["industry_status"] = overlap.get("industry_status", "ok")
+                item["live_overlap_level"] = overlap.get("live_overlap_level", "unknown")
+                item["full_exposure_ready"] = False
+                item["limitation"] = overlap.get("limitation", "仅基于前十大持仓，可能低估中尾部重叠")
+                item["common_holdings"] = overlap.get("common_holdings", [])
+                item["human_review_reason"] = "Top10 重仓股存在重叠，进入观察/人工复核；不直接改变建议金额。" if overlap.get("overlap_level") in ("medium","high") else ""
             else:
                 item["overlap_status"] = "DATA_MISSING"
         else:

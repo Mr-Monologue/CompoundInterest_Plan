@@ -160,7 +160,9 @@ checks = {"total_items": len(items), "required_fields": ["overlap_status","holdi
           "optional_fields": ["common_holdings","stale_days","usable_for_live"],
           "with_overlap_status": 0, "with_source": 0, "with_is_fixture": 0,
           "with_common_holdings": 0, "with_stale": 0, "with_usable": 0,
-          "missing_required": {}, "missing_optional": {}}
+          "with_coverage": 0, "with_scope": 0, "with_industry_status": 0, "with_limitation": 0,
+          "missing_required": {}, "missing_optional": {},
+          "v1.2_evidence": ["coverage_level","overlap_scope","heavy_position_overlap_level","industry_status","limitation","common_holdings"]}
 for i in items:
     checks["with_overlap_status"] += 1 if i.get("overlap_status") else 0
     checks["with_common_holdings"] += 1 if "common_holdings" in i or "overlap_evidence" in i else 0
@@ -168,6 +170,10 @@ for i in items:
     checks["with_is_fixture"] += 1 if "is_fixture" in i else 0
     checks["with_usable"] += 1 if "usable_for_live" in i else 0
     checks["with_stale"] += 1 if i.get("stale_days") is not None else 0
+    checks["with_coverage"] += 1 if i.get("coverage_level") else 0
+    checks["with_scope"] += 1 if i.get("overlap_scope") else 0
+    checks["with_industry_status"] += 1 if i.get("industry_status") else 0
+    checks["with_limitation"] += 1 if i.get("limitation") else 0
     missing_r = [k for k in checks["required_fields"] if not i.get(k) and i.get(k) is None]
     missing_o = [k for k in checks["optional_fields"] if not i.get(k) and i.get(k) is None]
     if missing_r: checks["missing_required"][i.get("fund_code","?")] = missing_r

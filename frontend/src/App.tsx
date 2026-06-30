@@ -292,6 +292,14 @@ function App() {
                 <div style={{background:'rgba(99,102,241,0.08)', borderRadius:10, padding:12, marginBottom:16, border:'1px solid rgba(99,102,241,0.15)'}}>
                   <div style={{fontSize:12, fontWeight:600, color:'#a5b4fc', marginBottom:8}}>🔍 暴露闸门审计</div>
                   {dailyDecisions[0]?.decision_source==='exposure_demo' && <div style={{fontSize:10,color:'#f59e0b',marginBottom:8,padding:'4px 8px',background:'rgba(245,158,11,0.1)',borderRadius:4}}>⚠️ 演示数据，仅用于验证暴露闸门，不作为真实操作计划。</div>}
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+                    <div style={{flex:1,minWidth:180,padding:8,background:'rgba(99,102,241,0.06)',borderRadius:8,fontSize:10}}>
+                      <div style={{fontWeight:600,color:'#a5b4fc'}}>当前重叠分析能力</div>
+                      <div style={{color:'#6b7280',marginTop:4}}>状态: TOP10_ONLY_READY · 范围: 前十大重仓股</div>
+                      <div style={{color:'#6b7280'}}>完整持仓穿透: 未就绪 · 行业重叠: {dailyDecisions[0]?.industry_status==='INDUSTRY_DATA_MISSING'?'缺失/未参与':'可用'}</div>
+                      <div style={{color:'#6b7280'}}>作用: 观察与人工复核，不直接决定金额</div>
+                    </div>
+                  </div>
                   <div style={{display:'flex', gap:16, flexWrap:'wrap', fontSize:12}}>
                     <span>原始候选: <b style={{color:'#f59e0b'}}>¥{candidateTotal}</b></span>
                     <span>最终建议: <b style={{color:'#10b981'}}>¥{finalTotal}</b></span>
@@ -377,8 +385,9 @@ function App() {
                               {d.overlap_status==='DATA_MISSING'
                                 ? '持仓数据缺失，无法判断真实重叠，当前仅观察。'
                                 : <>
-                                    Top10重叠:{(d.overlap_score*100).toFixed(0)}% | 行业重叠:{(d.overlap_industry*100).toFixed(0)}% | 综合:{d.overlap_status}
+                                    Top10重叠:{(d.overlap_score*100).toFixed(0)}% | 行业重叠:{d.overlap_industry!=null?(d.overlap_industry*100).toFixed(0)+'%':'—（缺失）'} | 综合:{d.overlap_status}
                                     <div style={{color:'#f59e0b',fontSize:9,marginTop:2}}>仅基于前十大持仓，可能低估真实组合重叠</div>
+                                    {d.industry_status==='INDUSTRY_DATA_MISSING' && <div style={{color:'#71717a',fontSize:9,marginTop:2}}>行业数据缺失，未参与行业重叠判断</div>}
                                     {d.is_fixture && d.overlap_industry>=0.8 && d.overlap_status!=='high' ? ' — 因数据来源为规则推断/示例数据，综合等级未提升为high' : ''}
                                     {d.overlap_evidence?.length>0 && <div style={{color:'#52525b',marginTop:2}}>{d.overlap_evidence.join(', ')}</div>}
                                   </>
