@@ -329,7 +329,7 @@ function App() {
                     </div>;
                   })()}
                 </div>
-              }
+              )})()}
             {dailyError && <div style={{background:'rgba(239,68,68,0.08)', padding:12, borderRadius:8, marginBottom:16, border:'1px solid rgba(239,68,68,0.2)'}}><div style={{fontSize:12,color:'#ef4444',marginBottom:4}}>生成失败</div><div style={{fontSize:11,color:'#fca5a5'}}>{dailyError}</div></div>}
             {dailyDebug && <details style={{marginBottom:16, fontSize:10, color:'#6b7280'}}><summary>Debug</summary><pre>{JSON.stringify(dailyDebug,null,2)}</pre></details>}
             {dailyDecisions.length===0 ? (
