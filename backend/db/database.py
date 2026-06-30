@@ -37,6 +37,14 @@ def create_db_and_tables():
             if "classification_confidence" not in cols:
                 conn.execute(text("ALTER TABLE dailydecision ADD COLUMN classification_confidence TEXT DEFAULT ''"))
             conn.commit()
+    if "fund_holding_snapshot" in tables:
+        cols = [c["name"] for c in inspector.get_columns("fund_holding_snapshot")]
+        with engine.connect() as conn:
+            for col, typ in [("holding_count", "INTEGER DEFAULT 0"), ("holding_coverage_level", "TEXT DEFAULT 'unknown'"),
+                             ("stock_weight_coverage", "FLOAT DEFAULT 0.0"), ("coverage_source", "TEXT DEFAULT ''")]:
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE fund_holding_snapshot ADD COLUMN {col} {typ}"))
+            conn.commit()
     SQLModel.metadata.create_all(engine)
 
 def get_session():
