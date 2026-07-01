@@ -296,7 +296,7 @@ function App() {
                     <div style={{flex:1,minWidth:180,padding:8,background:'rgba(99,102,241,0.06)',borderRadius:8,fontSize:10}}>
                       <div style={{fontWeight:600,color:'#a5b4fc'}}>当前重叠分析能力</div>
                       <div style={{color:'#6b7280',marginTop:4}}>状态: TOP10_ONLY_READY · 范围: 前十大重仓股</div>
-                      <div style={{color:'#6b7280'}}>完整持仓穿透: 未就绪 · 行业重叠: {dailyDecisions[0]?.industry_status==='INDUSTRY_DATA_MISSING'?'缺失/未参与':'可用'}</div>
+                      <div style={{color:'#6b7280'}}>完整持仓穿透: 未就绪 · 行业重叠: {dailyDecisions[0]?.industry_status==='INDUSTRY_DATA_MISSING'||dailyDecisions[0]?.industry_status==='N/A'?'缺失/未参与':'可用'}</div>
                       <div style={{color:'#6b7280'}}>作用: 观察与人工复核，不直接决定金额</div>
                     </div>
                   </div>
@@ -387,6 +387,8 @@ function App() {
                                     Top10重叠:{(d.overlap_score*100).toFixed(0)}% | 行业重叠:{d.overlap_industry!=null?(d.overlap_industry*100).toFixed(0)+'%':'—（缺失）'} | 综合:{d.overlap_status}
                                     <div style={{color:'#f59e0b',fontSize:9,marginTop:2}}>仅基于前十大持仓，可能低估真实组合重叠</div>
                                     {d.industry_status==='INDUSTRY_DATA_MISSING' && <div style={{color:'#71717a',fontSize:9,marginTop:2}}>行业数据缺失，未参与行业重叠判断</div>}
+                                    {d.coverage_level && <div style={{fontSize:9,color:'#6b7280'}}>覆盖: {d.coverage_level} · 范围: {d.overlap_scope||'N/A'} · 等级: {d.heavy_position_overlap_level||'N/A'}</div>}
+                                    {d.common_holdings?.length>0 && <div style={{fontSize:9,color:'#52525b'}}>共同持仓: {d.common_holdings.join(', ')}</div>}
                                     {d.is_fixture && d.overlap_industry>=0.8 && d.overlap_status!=='high' ? ' — 因数据来源为规则推断/示例数据，综合等级未提升为high' : ''}
                                     {d.overlap_evidence?.length>0 && <div style={{color:'#52525b',marginTop:2}}>{d.overlap_evidence.join(', ')}</div>}
                                   </>
@@ -394,12 +396,16 @@ function App() {
                             </div>}
                             {d.is_fixture && <div style={{fontSize:10,color:'#ef4444',marginTop:2}}>非真实披露持仓，不进入实盘建议</div>}
                             {d.holding_date && <div style={{fontSize:10,color:'#52525b',marginTop:2}}>
-                              {d.is_fixture ? '规则样本日期' : '持仓披露日期'}: {d.holding_date?.slice(0,10)||'未知'}
-                              {d.holding_source && ` · 来源:${d.holding_source} · stale:${d.stale_days}天`}
+                              {d.is_fixture ? '数据日期' : '持仓披露日期'}: {d.holding_date?.slice(0,10)||'未知'}
+                              {d.report_period && ` · 报告期:${d.report_period}`}
+                              {d.stale_days>0 && ` · ${d.stale_days}天前`}
                               {d.stale_days>120 && <span style={{color:'#ef4444'}}> ⚠️过期</span>}
                             </div>}
                             <div style={{fontSize:10,color:'#52525b',marginTop:2}}>
-                              来源：{cs||'未返回'}，置信度：{cf||'未知'}
+                              数据源: {d.holding_source||'未返回'}
+                              {d.source_a && ` → 对${d.source_a}`}
+                              {' · '}
+                              分类: {cs||'未返回'}，{cf||'未知'}
                               {cs==='local_rule'&&cf==='medium'?' ⚠️规则推断，后续需持仓穿透验证':''}
                               {(d.theme_bucket&&d.theme_bucket!=='未分类')?` · 主题:${d.theme_bucket}`:' · 主题:规则推断/待持仓穿透确认'}
                             </div>
