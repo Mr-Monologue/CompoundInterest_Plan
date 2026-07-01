@@ -846,6 +846,21 @@ def get_today_decisions(session: Session = Depends(get_session)):
             item["final_amount"] = None; item["audit_amount"] = fin
         else:
             item["final_amount"] = None
+    # ── v1.5: Valuation enrichment ──────────────────────
+    from services.valuation import fetch_valuation
+    for item in items:
+        val = fetch_valuation(item["fund_code"])
+        item.update({f"valuation_{k}": v for k, v in val.items()})
+        # Valuation never changes amount — only triggers REVIEW_REQUIRED
+        vlevel = val.get("valuation_level")
+        if vlevel == "expensive" and item["decision_action"] == "BUY":
+            item["decision_action"] = "REVIEW_REQUIRED"
+            item["amount_display_policy"] = "AUDIT_ONLY"
+            item["valuation_action"] = "REVIEW_REQUIRED"
+            item["valuation_reason"] = "估值偏高但策略建议买入，需人工复核"
+        elif vlevel == "undervalued" and item["decision_action"] in ("OBSERVE", "WATCH"):
+            item["valuation_action"] = "WATCH"
+            item["valuation_reason"] = "估值偏低但策略未建议买入，需关注"
     first = min(items, key=lambda x: x.get("created_at", "")) if items else None
     return {"date": today, "generated": True, "generated_at": str(first.get("created_at", "")) if first else None, "count": len(items), "items": items}
 

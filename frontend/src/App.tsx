@@ -286,6 +286,13 @@ function App() {
               const candidateTotal = dailyDecisions.reduce((s,d)=>s+(d.candidate_amount||0),0);
               const finalTotal = dailyDecisions.filter(d=>['fixed_dca','dynamic_dca'].includes(d.strategy_action)).reduce((s,d)=>s+(d.recommended_amount||0),0);
               const downgraded = dailyDecisions.filter(d=>d.downgrade_reason);
+              const buy = dailyDecisions.filter(d=>d.decision_action==='BUY');
+              const review = dailyDecisions.filter(d=>d.decision_action==='REVIEW_REQUIRED');
+              const watch = dailyDecisions.filter(d=>d.decision_action==='WATCH');
+              const obs = dailyDecisions.filter(d=>d.decision_action==='OBSERVE');
+              const blocked = dailyDecisions.filter(d=>d.decision_action==='BLOCKED');
+              const noact = dailyDecisions.filter(d=>d.decision_action==='NO_ACTION');
+              const liveTotal = buy.filter(d=>d.amount_display_policy==='SHOW_AMOUNT').reduce((s,d)=>s+(d.final_amount||0),0);
               const cap = 600;
               const allObserve = dailyDecisions.length > 0 && dailyDecisions.every(d=>d.strategy_action==='observe');
               return (
@@ -299,6 +306,15 @@ function App() {
                       <div style={{color:'#6b7280'}}>完整持仓穿透: 未就绪 · 行业重叠: {dailyDecisions[0]?.industry_status==='INDUSTRY_DATA_MISSING'||dailyDecisions[0]?.industry_status==='N/A'?'缺失/未参与':'可用'}</div>
                       <div style={{color:'#6b7280'}}>作用: 观察与人工复核，不直接决定金额</div>
                     </div>
+                  </div>
+                  <div style={{display:'flex', gap:8, flexWrap:'wrap', fontSize:11, marginBottom:12}}>
+                    {buy.length>0 && <span style={{background:'rgba(16,185,129,0.15)',color:'#10b981',padding:'2px 8px',borderRadius:4}}>需执行 {buy.length}</span>}
+                    {review.length>0 && <span style={{background:'rgba(239,68,68,0.1)',color:'#ef4444',padding:'2px 8px',borderRadius:4}}>需复核 {review.length}</span>}
+                    {watch.length>0 && <span style={{background:'rgba(245,158,11,0.12)',color:'#f59e0b',padding:'2px 8px',borderRadius:4}}>重点观察 {watch.length}</span>}
+                    {obs.length>0 && <span style={{background:'rgba(99,102,241,0.1)',color:'#a5b4fc',padding:'2px 8px',borderRadius:4}}>观察 {obs.length}</span>}
+                    {blocked.length>0 && <span style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',padding:'2px 8px',borderRadius:4}}>阻断 {blocked.length}</span>}
+                    {noact.length>0 && <span style={{background:'rgba(113,113,122,0.1)',color:'#71717a',padding:'2px 8px',borderRadius:4}}>无需操作 {noact.length}</span>}
+                    {liveTotal>0 && <span style={{fontWeight:600}}>建议总额: ¥{liveTotal}</span>}
                   </div>
                   <div style={{display:'flex', gap:16, flexWrap:'wrap', fontSize:12}}>
                     <span>原始候选: <b style={{color:'#f59e0b'}}>¥{candidateTotal}</b></span>
@@ -374,7 +390,7 @@ function App() {
                       return (<div key={d.id} style={{padding:12,marginBottom:8,background:'rgba(245,158,11,0.04)',borderRadius:10,border:'1px solid rgba(245,158,11,0.1)'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                           <div style={{flex:1}}>
-                            <div style={{fontWeight:600}}>{d.fund_name} ({d.fund_code})</div>
+                            <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontWeight:600}}></span>{d.decision_action&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:3,background:d.decision_action==="BUY"?"rgba(16,185,129,0.15)":d.decision_action==="REVIEW_REQUIRED"?"rgba(239,68,68,0.1)":d.decision_action==="WATCH"?"rgba(245,158,11,0.12)":"rgba(99,102,241,0.1)",color:d.decision_action==="BUY"?"#10b981":d.decision_action==="REVIEW_REQUIRED"?"#ef4444":d.decision_action==="WATCH"?"#f59e0b":"#a5b4fc"}}>{d.decision_action==="BUY"?"买入":d.decision_action==="REVIEW_REQUIRED"?"需复核":d.decision_action==="WATCH"?"重点观察":d.decision_action==="OBSERVE"?"观察":d.decision_action==="BLOCKED"?"风控阻断":""}</span>}</div>
                             {candAmt != null && <div style={{fontSize:11,color:'#71717a',marginTop:4}}>
                               原始信号：{d.candidate_action||d.strategy_action} ¥{candAmt}
                               → 最终动作：{d.strategy_action} {finAmt===0?'¥0':(finAmt!=null?'¥'+finAmt:'不输出')}
@@ -409,6 +425,11 @@ function App() {
                               {cs==='local_rule'&&cf==='medium'?' ⚠️规则推断，后续需持仓穿透验证':''}
                               {(d.theme_bucket&&d.theme_bucket!=='未分类')?` · 主题:${d.theme_bucket}`:' · 主题:规则推断/待持仓穿透确认'}
                             </div>
+                            {d.valuation_status && <div style={{fontSize:10,color:'#52525b',marginTop:2}}>
+                              估值: {d.valuation_status==='READY'?`${d.valuation_level==='undervalued'?'🔵低估':d.valuation_level==='fair'?'⚪合理':d.valuation_level==='expensive'?'🟠偏高':'?'} · PE:P${d.valuation_pe_percentile}% · PB:P${d.valuation_pb_percentile}%`:'估值数据缺失'}
+                              {d.valuation_reason && <span style={{color:'#f59e0b'}}> · {d.valuation_reason}</span>}
+                              {d.valuation_evidence && <span style={{color:'#71717a'}}> · {d.valuation_evidence}</span>}
+                            </div>}
                             <div style={{fontSize:9,color:'#4b5563',marginTop:4}}>AI/持仓分析仅用于解释和暴露判断，不直接决定买入金额。</div>
                           </div>
                           <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:12}}>
