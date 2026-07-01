@@ -851,16 +851,21 @@ def get_today_decisions(session: Session = Depends(get_session)):
     for item in items:
         val = fetch_valuation(item["fund_code"])
         item.update({f"valuation_{k}": v for k, v in val.items()})
-        # Valuation never changes amount — only triggers REVIEW_REQUIRED
+        # v1.5.1: Only trigger REVIEW_REQUIRED when proxy is confident
         vlevel = val.get("valuation_level")
-        if vlevel == "expensive" and item["decision_action"] == "BUY":
+        vstatus = val.get("proxy_status", "ok")
+        is_weak = vstatus in ("weak_proxy", "bond_pending")
+        if vlevel == "expensive" and item["decision_action"] == "BUY" and not is_weak:
             item["decision_action"] = "REVIEW_REQUIRED"
             item["amount_display_policy"] = "AUDIT_ONLY"
             item["valuation_action"] = "REVIEW_REQUIRED"
             item["valuation_reason"] = "估值偏高但策略建议买入，需人工复核"
-        elif vlevel == "undervalued" and item["decision_action"] in ("OBSERVE", "WATCH"):
+        elif vlevel == "undervalued" and item["decision_action"] in ("OBSERVE", "WATCH") and not is_weak:
             item["valuation_action"] = "WATCH"
             item["valuation_reason"] = "估值偏低但策略未建议买入，需关注"
+        elif is_weak and item["valuation_status"] != "bond_pending":
+            item["valuation_action"] = "INFO_ONLY"
+            item["valuation_reason"] = "估值代理较弱(仅参考)"
     first = min(items, key=lambda x: x.get("created_at", "")) if items else None
     return {"date": today, "generated": True, "generated_at": str(first.get("created_at", "")) if first else None, "count": len(items), "items": items}
 

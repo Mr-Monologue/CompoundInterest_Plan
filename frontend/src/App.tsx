@@ -426,7 +426,11 @@ function App() {
                               {(d.theme_bucket&&d.theme_bucket!=='未分类')?` · 主题:${d.theme_bucket}`:' · 主题:规则推断/待持仓穿透确认'}
                             </div>
                             {d.valuation_status && <div style={{fontSize:10,color:'#52525b',marginTop:2}}>
-                              估值: {d.valuation_status==='READY'?`${d.valuation_level==='undervalued'?'🔵低估':d.valuation_level==='fair'?'⚪合理':d.valuation_level==='expensive'?'🟠偏高':'?'} · PE:P${d.valuation_pe_percentile}% · PB:P${d.valuation_pb_percentile}%`:'估值数据缺失'}
+                              {d.valuation_status==='WEAK_PROXY'?`估值: 代理较弱 · ${d.valuation_proxy_index_name}(匹配度${d.valuation_proxy_fit_score}/100)`:
+                               d.valuation_status==='bond_pending'?'估值: 债券(不使用PE/PB)':
+                               d.valuation_status==='READY'?`估值: ${d.valuation_level==='undervalued'?'🔵低估':d.valuation_level==='fair'?'⚪合理':d.valuation_level==='expensive'?'🟠偏高':'?'} · PE:P${d.valuation_pe_percentile}% · PB:P${d.valuation_pb_percentile}%`:
+                               d.valuation_status==='DATA_MISSING'?'估值: 数据缺失':
+                               `估值: ${d.valuation_status}`}
                               {d.valuation_reason && <span style={{color:'#f59e0b'}}> · {d.valuation_reason}</span>}
                               {d.valuation_evidence && <span style={{color:'#71717a'}}> · {d.valuation_evidence}</span>}
                             </div>}
