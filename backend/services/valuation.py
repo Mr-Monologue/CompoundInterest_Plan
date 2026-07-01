@@ -25,6 +25,20 @@ PROXY_MAP = {
 }
 
 
+
+
+# Cache: only try akshare import once
+_ak_available = None
+def _try_akshare():
+    global _ak_available
+    if _ak_available is None:
+        try:
+            import akshare as ak
+            _ak_available = ak
+        except:
+            _ak_available = False
+    return _ak_available
+
 def fetch_valuation(fund_code: str) -> dict:
     """Fetch valuation data for a fund via its proxy index."""
     proxy = PROXY_MAP.get(fund_code)
@@ -55,7 +69,8 @@ def fetch_valuation(fund_code: str) -> dict:
         return result
 
     try:
-        import akshare as ak
+        ak = _try_akshare()
+        if not ak: return {**result, "valuation_status": "SOURCE_ERROR", "error": "akshare_unavailable"}
         df = ak.index_value_name_funddb()
         if df is not None and len(df) > 0:
             index_code = proxy["index_code"]

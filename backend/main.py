@@ -863,7 +863,7 @@ def get_today_decisions(session: Session = Depends(get_session)):
         elif vlevel == "undervalued" and item["decision_action"] in ("OBSERVE", "WATCH") and not is_weak:
             item["valuation_action"] = "WATCH"
             item["valuation_reason"] = "估值偏低但策略未建议买入，需关注"
-        elif is_weak and item["valuation_status"] != "bond_pending":
+        elif is_weak and item.get("valuation_proxy_status") != "bond_pending":
             item["valuation_action"] = "INFO_ONLY"
             item["valuation_reason"] = "估值代理较弱(仅参考)"
     first = min(items, key=lambda x: x.get("created_at", "")) if items else None
