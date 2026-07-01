@@ -37,6 +37,14 @@ def create_db_and_tables():
             if "classification_confidence" not in cols:
                 conn.execute(text("ALTER TABLE dailydecision ADD COLUMN classification_confidence TEXT DEFAULT ''"))
             conn.commit()
+    if "userdecision" in tables:
+        cols = [c["name"] for c in inspector.get_columns("userdecision")]
+        with engine.connect() as conn:
+            for col, typ in [("review_note", "TEXT DEFAULT ''"), ("override_reason", "TEXT DEFAULT ''")]:
+                if col not in cols:
+                    try: conn.execute(text(f"ALTER TABLE userdecision ADD COLUMN {col} {typ}")); conn.commit()
+                    except: pass
+            conn.commit()
     if "fund_holding_snapshot" in tables:
         cols = [c["name"] for c in inspector.get_columns("fund_holding_snapshot")]
         with engine.connect() as conn:

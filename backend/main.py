@@ -797,6 +797,55 @@ def get_today_decisions(session: Session = Depends(get_session)):
             item["common_holdings"] = []
 
         items.append(item)
+    # ── v1.3: Decision action mapping ─────────────────
+    for item in items:
+        sa = item.get("strategy_action", "")
+        dr = item.get("downgrade_reason", "")
+        # Map to decision_action
+        if sa in ("fixed_dca", "dynamic_dca"):
+            item["decision_action"] = "BUY"; item["amount_display_policy"] = "SHOW_AMOUNT"
+            item["user_action_policy"] = "CAN_MARK_DONE"; item["can_mark_done"] = True
+            item["can_skip"] = True; item["can_override"] = False; item["override_requires_reason"] = False
+        elif sa == "blocked" or item.get("exposure_status") == "BLOCKED":
+            item["decision_action"] = "BLOCKED"; item["amount_display_policy"] = "HIDE_AMOUNT"
+            item["user_action_policy"] = "DISABLED"; item["can_mark_done"] = False
+            item["can_skip"] = False; item["can_override"] = False
+        elif dr and ("重叠" in dr or "top10" in dr.lower() or "overlap" in dr.lower() or "exposure" in dr.lower()):
+            item["decision_action"] = "REVIEW_REQUIRED"; item["amount_display_policy"] = "AUDIT_ONLY"
+            item["user_action_policy"] = "REQUIRE_REVIEW_NOTE"; item["can_mark_done"] = False
+            item["can_skip"] = True; item["can_override"] = True; item["override_requires_reason"] = True
+        elif sa == "take_profit_watch" or "WATCH" in str(item.get("exposure_status", "")):
+            item["decision_action"] = "WATCH"; item["amount_display_policy"] = "SHOW_ZERO"
+            item["user_action_policy"] = "CAN_SKIP"; item["can_mark_done"] = False
+            item["can_skip"] = True; item["can_override"] = False
+        elif sa == "observe":
+            item["decision_action"] = "OBSERVE"; item["amount_display_policy"] = "SHOW_ZERO"
+            item["user_action_policy"] = "CAN_SKIP"; item["can_mark_done"] = False
+            item["can_skip"] = True; item["can_override"] = False
+        else:
+            item["decision_action"] = "NO_ACTION"; item["amount_display_policy"] = "HIDE_AMOUNT"
+            item["user_action_policy"] = "DISABLED"; item["can_mark_done"] = False
+            item["can_skip"] = False; item["can_override"] = False
+        # Execution status
+        ua = item.get("user_action", "pending")
+        item["execution_status"] = "DONE" if ua == "done" else ("SKIPPED" if ua == "skipped" else "PENDING")
+        # Required user input
+        if item["decision_action"] == "REVIEW_REQUIRED":
+            item["required_user_input"] = "复核原因（必填）"
+        elif item["decision_action"] in ("BUY", "OBSERVE", "WATCH"):
+            item["required_user_input"] = ""
+        else:
+            item["required_user_input"] = ""
+        # amount visibility
+        fin = item.get("recommended_amount", 0) or 0
+        if item["amount_display_policy"] == "SHOW_AMOUNT":
+            item["final_amount"] = fin
+        elif item["amount_display_policy"] == "SHOW_ZERO":
+            item["final_amount"] = 0
+        elif item["amount_display_policy"] == "AUDIT_ONLY":
+            item["final_amount"] = None; item["audit_amount"] = fin
+        else:
+            item["final_amount"] = None
     first = min(items, key=lambda x: x.get("created_at", "")) if items else None
     return {"date": today, "generated": True, "generated_at": str(first.get("created_at", "")) if first else None, "count": len(items), "items": items}
 
@@ -811,14 +860,31 @@ def ack_decision(decision_id: int, session: Session = Depends(get_session)):
 
 @app.post("/api/decision/{decision_id}/user-action")
 def record_user_action(decision_id: int, data: dict, session: Session = Depends(get_session)):
+    dd = session.get(DailyDecision, decision_id)
+    if not dd: return {"ok": False, "error": "Decision not found"}
+
     ud = session.exec(select(UserDecision).where(UserDecision.daily_decision_id == decision_id)).first()
     if not ud: ud = UserDecision(daily_decision_id=decision_id)
-    ud.user_action = data.get("action", "pending")
+    action = data.get("action", "pending")
+    ud.user_action = action
     ud.actual_amount = data.get("actual_amount")
     ud.skip_reason = data.get("skip_reason", "")
     ud.user_note = data.get("user_note", "")
-    if data.get("action") in ("executed", "skipped"): ud.confirmed_at = _datetime.now()
-    session.add(ud); session.commit(); return {"ok": True}
+    ud.review_note = data.get("review_note", "")
+    ud.override_reason = data.get("override_reason", "")
+
+    # v1.4: Pool deduction guard — only BUY + executed allows transaction/pool deduction
+    is_buy = dd.strategy_action in ("fixed_dca", "dynamic_dca")
+    if action == "executed" and is_buy:
+        ud.confirmed_at = _datetime.now()
+        # Only deduct pool for BUY executed
+    elif action == "executed" and not is_buy:
+        return {"ok": False, "error": "NON_BUY_EXECUTED_BLOCKED", "reason": "Only BUY items can be marked as executed"}
+    elif action in ("skipped", "observed", "acknowledged", "reviewed"):
+        ud.confirmed_at = _datetime.now()
+
+    session.add(ud); session.commit()
+    return {"ok": True, "action": action, "pool_deductible": action == "executed" and is_buy}
 
 
 @app.get("/api/decision/history")

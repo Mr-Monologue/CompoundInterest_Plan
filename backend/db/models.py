@@ -220,6 +220,8 @@ class UserDecision(SQLModel, table=True):
     actual_transaction_id: Optional[int] = None
     skip_reason: str = ""
     user_note: str = ""
+    review_note: str = ""
+    override_reason: str = ""
     confirmed_at: Optional[datetime] = None
     # v0.8.4: override exposure guard
     override_exposure_guard: bool = False
