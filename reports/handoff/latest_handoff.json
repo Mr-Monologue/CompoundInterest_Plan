@@ -1,43 +1,43 @@
 {
-  "milestone": "v1.9-data-quality-workbench",
+  "generated_at": "2025-06-30",
+  "milestone": "v2.0-RC",
   "milestone_status": "PASS",
   "failed_invariants": [],
-  "changed_files": [
-    "backend/db/models.py (+DataQualityIssue model)",
-    "backend/main.py (+5 data-quality routes)",
-    "backend/services/data_quality.py (new)"
-  ],
-  "registered_routes": [
-    "GET /api/data-quality/summary",
-    "GET /api/data-quality/issues",
-    "POST /api/data-quality/scan",
-    "POST /api/data-quality/issues/{issue_id}/fix",
-    "POST /api/data-quality/issues/{issue_id}/ignore"
-  ],
-  "data_quality_summary_sample": {
-    "total_open": 12,
-    "critical": 0,
-    "warning": 4,
-    "info": 8,
-    "by_type": {"NO_SNAPSHOT": 6, "WEAK_PROXY": 2, "VALUATION_DATA_MISSING": 1, "INDUSTRY_DATA_MISSING": 3},
-    "fixable_count": 6,
-    "needs_human_count": 3
+  "release": {
+    "version": "2.0.0-rc1",
+    "branch": "develop",
+    "git_commit": "d7a2ded",
+    "assets": 6,
+    "report_status": "TOP10_ONLY_READY"
   },
-  "scan_result_sample": {"scanned": 6, "issues_created": 12},
-  "fix_result_sample": {"issue_id": 1, "fix_result": "ok", "status": "FIXED"},
-  "data_quality_audit": {
-    "read_only_GET": true,
-    "scan_writes_issues_only": true,
-    "fix_no_amount_mutation": true,
-    "fix_no_risk_guard_mutation": true,
-    "fix_no_transaction_created": true,
-    "fix_no_pool_deduction": true,
-    "audit_log_written": true,
-    "mock_valuation_blocked": true
+  "feature_summary": {
+    "strategy": "核心-卫星价值定投 + 固定/动态DCA双模式",
+    "holdings": "AKShare Top10真实持仓 + Jaccard重叠 + 行业余弦",
+    "valuation": "7基金代理指数映射 (PE/PB百分位)",
+    "exposure": "暴露闸门 (同主题/行业/持仓重叠)",
+    "user_action": "6种决策动作 + 用户操作闭环 + 资金池守卫",
+    "dashboard": "系统状态 + 待办中心 + 周报",
+    "data_quality": "数据质量扫描 + 安全修复 + 审计日志",
+    "audit": "Full Exposure Audit (15对重叠矩阵)"
   },
   "safety": {
     "no_auto_trade": true,
     "no_auto_confirm": true,
-    "no_amount_mutation": true
-  }
+    "all_writes_require_human": true,
+    "GET_dashboard_data_quality_read_only": true,
+    "scan_fix_writes_quality_audit_only": true,
+    "valuation_does_not_modify_amount": true,
+    "top10_only_does_not_force_amount": true
+  },
+  "docs": {
+    "RELEASE_NOTES.md": "完整功能清单与安全保证",
+    "USER_GUIDE.md": "用户操作指南",
+    "reports/handoff/latest_handoff.json": "技术交接报告"
+  },
+  "remaining_risks": [
+    "持仓穿透仅Top10，中尾部重叠无法计算",
+    "行业数据依赖本地规则推断",
+    "债券估值未接入久期/信用指标",
+    "沙箱环境无法验证AKShare真实数据"
+  ]
 }
