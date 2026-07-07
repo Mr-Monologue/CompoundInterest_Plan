@@ -1,32 +1,32 @@
 {
   "generated_at": "2025-06-30",
-  "milestone": "v1.6-weekly-review-mvp",
+  "milestone": "v1.7-readonly-dashboard",
   "milestone_status": "PASS",
   "failed_invariants": [],
-  "system": {
-    "git": "ed29ce3",
-    "assets": 6,
-    "report_status": "TOP10_ONLY_READY"
+  "changed_files": [
+    "backend/services/dashboard.py",
+    "backend/main.py",
+    "frontend/src/App.tsx"
+  ],
+  "GET /api/dashboard sample": {
+    "assets_count": 6,
+    "today_decisions_summary": {"BUY": 0, "OBSERVE": 6, "WATCH": 0, "REVIEW_REQUIRED": 0, "BLOCKED": 0, "NO_ACTION": 0},
+    "user_actions_summary": {"pending": 4, "observed": 1, "reviewed": 1},
+    "pending_count": 4,
+    "valuation_summary": {"ready": 0, "source_error": 3, "weak_proxy": 2, "bond_pending": 1},
+    "exposure_summary": {"status": "TOP10_ONLY_READY"},
+    "safety": {"read_only": true, "no_auto_trade": true, "no_amount_mutation": true, "no_pool_deduction": true}
   },
-  "valuation_summary": {
-    "ready_count": 0,
-    "source_error_count": 3,
-    "weak_proxy_count": 2,
-    "bond_pending_count": 1,
-    "note": "本周估值层无可用真实数据，仅记录proxy状态，不参与投资判断。"
-  },
-  "weekly_review_summary": {
-    "decision_count": 6,
-    "actions": {"BUY": 0, "OBSERVE": 6, "WATCH": 0, "REVIEW_REQUIRED": 0, "BLOCKED": 0, "NO_ACTION": 0},
-    "user_actions": {"executed": 0, "skipped": 0, "observed": 1, "reviewed": 1, "pending": 4},
-    "unreviewed_count": 0,
-    "overlap_items": 0
+  "read_only_audit": {
+    "no_trigger_run_daily": true,
+    "no_transaction_create": true,
+    "no_pool_deduction": true,
+    "no_amount_mutation": true,
+    "no_risk_guard_mutation": true
   },
   "safety": {
     "no_auto_trade": true,
-    "valuation_does_not_modify_amount": true,
-    "valuation_does_not_override_risk_guard": true
-  },
-  "handoff_ready": true,
-  "next": "v1.7 dashboard"
+    "no_auto_confirm": true,
+    "valuation_does_not_modify_amount": true
+  }
 }
