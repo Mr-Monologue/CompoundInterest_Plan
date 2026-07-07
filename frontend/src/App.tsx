@@ -55,10 +55,12 @@ function App() {
   const [dailyError, setDailyError] = useState<any>(null);
   const [dailyDebug, setDailyDebug] = useState<any>(null);
   const [dashboard, setDashboard] = useState<any>(null);
+  const [todos, setTodos] = useState<any>(null);
 
-  // Fetch dashboard on mount
+  // Fetch dashboard + todos on mount
   React.useEffect(() => {
     fetch(apiUrl('/dashboard')).then(r => r.json()).then(setDashboard).catch(() => {});
+    fetch(apiUrl('/dashboard/todos')).then(r => r.json()).then(setTodos).catch(() => {});
   }, []);
 
   const apiUrl = (path: string) => `/api${path}`;
@@ -478,6 +480,20 @@ function App() {
           {showDeposit && (<div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}><input className="input-dark" placeholder="金额" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} style={{marginBottom: 5}} /><button onClick={handleDeposit} className="btn btn-primary" style={{width: '100%', fontSize: 12, padding: 6}}>确认充值</button></div>)}
           {showConfig && (<div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)'}}><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>校准余额:</div><input className="input-dark" value={newBalance} onChange={e => setNewBalance(e.target.value)} type="number" style={{marginBottom: 5}} /><div style={{fontSize: 11, color: '#aaa', marginBottom: 4}}>每份基准:</div><input className="input-dark" value={newBase} onChange={e => setNewBase(e.target.value)} type="number" style={{marginBottom: 5}} /><button onClick={handleUpdateConfig} className="btn btn-secondary" style={{width: '100%', fontSize: 12, padding: 6}}>保存</button></div>)}
         </div>
+
+        {todos && todos.ok && <div style={{background:'var(--bg-panel)', borderRadius:16, padding:16, marginBottom:24, border:'1px solid var(--border-active)'}}>
+          <div style={{fontWeight:600, marginBottom:12}}>⚡ 待办中心</div>
+          <div style={{display:'flex', gap:8, flexWrap:'wrap', fontSize:11, marginBottom:8}}>
+            {todos.todo_summary.must_handle>0 && <span style={{color:'#ef4444',background:'rgba(239,68,68,0.1)',padding:'2px 8px',borderRadius:4}}>必须处理 {todos.todo_summary.must_handle}</span>}
+            {todos.todo_summary.review_required>0 && <span style={{color:'#f59e0b',background:'rgba(245,158,11,0.1)',padding:'2px 8px',borderRadius:4}}>需复核 {todos.todo_summary.review_required}</span>}
+            {todos.todo_summary.blocked>0 && <span style={{color:'#ef4444',background:'rgba(239,68,68,0.15)',padding:'2px 8px',borderRadius:4}}>阻断 {todos.todo_summary.blocked}</span>}
+            {todos.todo_summary.data_issues>0 && <span style={{color:'#a5b4fc',background:'rgba(99,102,241,0.1)',padding:'2px 8px',borderRadius:4}}>数据异常 {todos.todo_summary.data_issues}</span>}
+            {todos.todo_summary.watch_items>0 && <span style={{color:'#71717a',background:'rgba(113,113,122,0.1)',padding:'2px 8px',borderRadius:4}}>观察 {todos.todo_summary.watch_items}</span>}
+          </div>
+          {todos.sections.data_issues.slice(0,3).map((d:any)=><div key={d.type} style={{fontSize:10,color:'#a5b4fc',marginTop:4}}>⚠ {d.reason}</div>)}
+          <div style={{fontSize:10,color:'#52525b',marginTop:8}}>待办中心仅聚合状态，不自动交易、不自动确认、不修改金额。</div>
+        </div>}
+
         <div className="section-header"><span>Watchlist</span><button className="btn-icon" onClick={() => setShowAddForm(!showAddForm)}><Plus size={14} /></button></div>
         {showAddForm && (<div style={{padding:12, background:'var(--bg-panel)', borderRadius:12, marginBottom:10, border:'1px solid var(--border-active)'}}><input className="input-dark" style={{marginBottom:8}} placeholder="代码" value={newCode} onChange={e=>setNewCode(e.target.value)} onBlur={e=>handleDetectFund(e.target.value)} /><input className="input-dark" style={{marginBottom:8}} placeholder="名称（自动识别）" value={newName} onChange={e=>setNewName(e.target.value)} /><button className="btn btn-primary" style={{width:'100%', justifyContent:'center'}} onClick={handleAddAsset}>确认</button></div>)}
         <div className="asset-list">{[...new Map(assets.map(a => [a.code, a])).values()].map(asset => (<div key={asset.code} className={`asset-item ${selectedAsset?.code === asset.code ? 'active' : ''}`} onClick={() => handleSelectAsset(asset)}><div><div className="name">{asset.name}</div><div className="code">{asset.code}</div></div><button className="btn-icon" onClick={(e) => handleDeleteAsset(e, asset.id)}><Trash2 size={14}/></button></div>))}</div>

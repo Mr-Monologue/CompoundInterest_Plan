@@ -926,6 +926,15 @@ def get_dashboard(session: Session = Depends(get_session)):
     return _dashboard(session)
 
 
+@app.get("/api/dashboard/todos")
+def get_dashboard_todos(session: Session = Depends(get_session)):
+    from services.dashboard import get_dashboard_todos as _todos
+    return _todos(session)
+
+
+# 3. 🔥
+
+
 # 3. 🔥
 
 
