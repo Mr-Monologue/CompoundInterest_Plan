@@ -932,6 +932,39 @@ def get_dashboard_todos(session: Session = Depends(get_session)):
     return _todos(session)
 
 
+
+
+# ── v1.9 Data Quality Workbench ──────────────────────────
+
+@app.get("/api/data-quality/summary")
+def dq_summary(session: Session = Depends(get_session)):
+    from services.data_quality import get_summary as _dq_summary
+    return _dq_summary(session)
+
+@app.get("/api/data-quality/issues")
+def dq_issues(session: Session = Depends(get_session)):
+    return session.exec(select(DataQualityIssue).order_by(DataQualityIssue.severity.desc())).all()
+
+@app.post("/api/data-quality/scan")
+def dq_scan(session: Session = Depends(get_session)):
+    from services.data_quality import scan_issues
+    return scan_issues(session)
+
+@app.post("/api/data-quality/issues/{issue_id}/fix")
+def dq_fix(issue_id: int, session: Session = Depends(get_session)):
+    from services.data_quality import try_fix
+    return try_fix(session, issue_id)
+
+@app.post("/api/data-quality/issues/{issue_id}/ignore")
+def dq_ignore(issue_id: int, data: dict, session: Session = Depends(get_session)):
+    iss = session.get(DataQualityIssue, issue_id)
+    if not iss: return {"ok": False}
+    iss.status = "IGNORED"; iss.resolved_at = _datetime.now()
+    iss.suggested_fix = (iss.suggested_fix or "") + " | IGNORED: " + data.get("reason", "")
+    session.commit()
+    return {"ok": True}
+
+
 # 3. 🔥
 
 
