@@ -920,6 +920,15 @@ def get_weekly_review(days: int = 7, session: Session = Depends(get_session)):
     return generate_weekly_review(session, days)
 
 
+@app.get("/api/dashboard")
+def get_dashboard(session: Session = Depends(get_session)):
+    from services.dashboard import get_dashboard as _dashboard
+    return _dashboard(session)
+
+
+# 3. 🔥
+
+
 # 3. 🔥 核心修复：处理根路径 "/" 和所有其他前端路由 🔥
 
 
