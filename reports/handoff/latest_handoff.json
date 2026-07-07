@@ -1,29 +1,32 @@
 {
   "generated_at": "2025-06-30",
-  "system": {"git": "ed29ce3", "assets": 6},
-  "valuation_summary": {
-    "ready": 0,
-    "weak_proxy": 2,
-    "bond_pending": 1,
-    "source_error": 3,
-    "total": 6,
-    "note": "SOURCE_ERROR due to sandbox no-network; real env: akshare→LIVE"
+  "milestone": "v1.6-weekly-review-mvp",
+  "milestone_status": "PASS",
+  "failed_invariants": [],
+  "system": {
+    "git": "ed29ce3",
+    "assets": 6,
+    "report_status": "TOP10_ONLY_READY"
   },
-  "proxy_map": [
-    {"code": "000083", "proxy": "中证消费", "fit": 70, "status": "ok", "data": "SOURCE_ERROR"},
-    {"code": "001532", "proxy": "沪深300", "fit": 40, "status": "weak_proxy", "data": "WEAK_PROXY"},
-    {"code": "002340", "proxy": "中证金融", "fit": 65, "status": "ok", "data": "SOURCE_ERROR"},
-    {"code": "000032", "proxy": "中债综合", "fit": 0, "status": "bond_pending", "data": "bond_pending"},
-    {"code": "003096", "proxy": "中证医药", "fit": 75, "status": "ok", "data": "SOURCE_ERROR"},
-    {"code": "005827", "proxy": "沪深300", "fit": 45, "status": "weak_proxy", "data": "WEAK_PROXY"}
-  ],
-  "rules": {
-    "WEAK_PROXY": "INFO_ONLY, 不触发REVIEW_REQUIRED",
-    "bond_pending": "不使用PE/PB",
+  "valuation_summary": {
+    "ready_count": 0,
+    "source_error_count": 3,
+    "weak_proxy_count": 2,
+    "bond_pending_count": 1,
+    "note": "本周估值层无可用真实数据，仅记录proxy状态，不参与投资判断。"
+  },
+  "weekly_review_summary": {
+    "decision_count": 6,
+    "actions": {"BUY": 0, "OBSERVE": 6, "WATCH": 0, "REVIEW_REQUIRED": 0, "BLOCKED": 0, "NO_ACTION": 0},
+    "user_actions": {"executed": 0, "skipped": 0, "observed": 1, "reviewed": 1, "pending": 4},
+    "unreviewed_count": 0,
+    "overlap_items": 0
+  },
+  "safety": {
+    "no_auto_trade": true,
     "valuation_does_not_modify_amount": true,
-    "valuation_does_not_override_risk_guard": true,
-    "no_auto_trade": true
+    "valuation_does_not_override_risk_guard": true
   },
   "handoff_ready": true,
-  "next": "v1.6 weekly_review"
+  "next": "v1.7 dashboard"
 }

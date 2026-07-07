@@ -914,6 +914,15 @@ def get_decision_history(days: int = 7, session: Session = Depends(get_session))
     return session.exec(select(DailyDecision).where(DailyDecision.date >= start).order_by(DailyDecision.date.desc())).all()
 
 
+@app.get("/api/weekly-review")
+def get_weekly_review(days: int = 7, session: Session = Depends(get_session)):
+    from services.weekly_review import generate_weekly_review
+    return generate_weekly_review(session, days)
+
+
+# 3. 🔥 核心修复：处理根路径 "/" 和所有其他前端路由 🔥
+
+
 # 3. 🔥 核心修复：处理根路径 "/" 和所有其他前端路由 🔥
 # 注意：这个函数必须放在所有 @app.get("/api/...") 之后！
 @app.get("/{full_path:path}")

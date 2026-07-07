@@ -1,35 +1,37 @@
-# v1.5.3 Handoff Report
+# v1.6 Weekly Review MVP — Handoff
 
-**Generated**: 2025-06-30  
-**System**: git=ed29ce3, assets=6, TOP10_ONLY_READY
+**Status**: PASS  
+**Failed invariants**: 0
 
-## Valuation Layer Status
+## Weekly Review
 
-| Fund | Proxy | Fit | Status | Valuation |
-|------|-------|-----|--------|-----------|
-| 000083 | 中证消费 | 70 | ok | SOURCE_ERROR* |
-| 001532 | 沪深300 | 40 | WEAK_PROXY | INFO_ONLY |
-| 002340 | 中证金融 | 65 | ok | SOURCE_ERROR* |
-| 000032 | 中债综合 | — | bond_pending | 不用PE/PB |
-| 003096 | 中证医药 | 75 | ok | SOURCE_ERROR* |
-| 005827 | 沪深300 | 45 | WEAK_PROXY | INFO_ONLY |
+| Action | Count |
+|--------|-------|
+| OBSERVE | 6 |
+| observed | 1 |
+| reviewed | 1 |
+| pending | 4 |
 
-*SOURCE_ERROR: sandbox no-network; real env: akshare → LIVE
+## Valuation
 
-## Rules
+| Status | Count |
+|--------|-------|
+| ready | 0 |
+| source_error | 3 |
+| weak_proxy | 2 |
+| bond_pending | 1 |
 
-- **WEAK_PROXY**: INFO_ONLY, 不触发 REVIEW_REQUIRED, 不影响金额
-- **bond_pending**: 不使用 PE/PB 估值
-- **valuation_does_not_modify_amount**: ✅
-- **valuation_does_not_override_risk_guard**: ✅
-- **不自动交易**: ✅
+> 本周估值层无可用真实数据，仅记录proxy状态，不参与投资判断。
 
-## Handoff Ready
+## Safety
 
-- migration: ✅
-- health: ✅
-- audit: TOP10_ONLY_READY  
-- decision_action: 6 types mapped
-- user_action: v1.4 closed loop
-- valuation: v1.5 proxy refined
-- ready for v1.6: weekly_review
+- no_auto_trade: ✅
+- valuation_does_not_modify_amount: ✅
+- valuation_does_not_override_risk_guard: ✅
+
+## API
+
+- `GET /api/weekly-review?days=7`
+- `services/weekly_review.py`
+
+## Handoff Ready → v1.7 dashboard
