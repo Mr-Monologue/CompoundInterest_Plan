@@ -54,6 +54,12 @@ function App() {
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState<any>(null);
   const [dailyDebug, setDailyDebug] = useState<any>(null);
+  const [dashboard, setDashboard] = useState<any>(null);
+
+  // Fetch dashboard on mount
+  React.useEffect(() => {
+    fetch(apiUrl('/dashboard')).then(r => r.json()).then(setDashboard).catch(() => {});
+  }, []);
 
   const apiUrl = (path: string) => `/api${path}`;
 
