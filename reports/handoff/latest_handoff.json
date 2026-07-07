@@ -1,32 +1,43 @@
 {
-  "generated_at": "2025-06-30",
-  "milestone": "v1.7-readonly-dashboard",
+  "milestone": "v1.9-data-quality-workbench",
   "milestone_status": "PASS",
   "failed_invariants": [],
   "changed_files": [
-    "backend/services/dashboard.py",
-    "backend/main.py",
-    "frontend/src/App.tsx"
+    "backend/db/models.py (+DataQualityIssue model)",
+    "backend/main.py (+5 data-quality routes)",
+    "backend/services/data_quality.py (new)"
   ],
-  "GET /api/dashboard sample": {
-    "assets_count": 6,
-    "today_decisions_summary": {"BUY": 0, "OBSERVE": 6, "WATCH": 0, "REVIEW_REQUIRED": 0, "BLOCKED": 0, "NO_ACTION": 0},
-    "user_actions_summary": {"pending": 4, "observed": 1, "reviewed": 1},
-    "pending_count": 4,
-    "valuation_summary": {"ready": 0, "source_error": 3, "weak_proxy": 2, "bond_pending": 1},
-    "exposure_summary": {"status": "TOP10_ONLY_READY"},
-    "safety": {"read_only": true, "no_auto_trade": true, "no_amount_mutation": true, "no_pool_deduction": true}
+  "registered_routes": [
+    "GET /api/data-quality/summary",
+    "GET /api/data-quality/issues",
+    "POST /api/data-quality/scan",
+    "POST /api/data-quality/issues/{issue_id}/fix",
+    "POST /api/data-quality/issues/{issue_id}/ignore"
+  ],
+  "data_quality_summary_sample": {
+    "total_open": 12,
+    "critical": 0,
+    "warning": 4,
+    "info": 8,
+    "by_type": {"NO_SNAPSHOT": 6, "WEAK_PROXY": 2, "VALUATION_DATA_MISSING": 1, "INDUSTRY_DATA_MISSING": 3},
+    "fixable_count": 6,
+    "needs_human_count": 3
   },
-  "read_only_audit": {
-    "no_trigger_run_daily": true,
-    "no_transaction_create": true,
-    "no_pool_deduction": true,
-    "no_amount_mutation": true,
-    "no_risk_guard_mutation": true
+  "scan_result_sample": {"scanned": 6, "issues_created": 12},
+  "fix_result_sample": {"issue_id": 1, "fix_result": "ok", "status": "FIXED"},
+  "data_quality_audit": {
+    "read_only_GET": true,
+    "scan_writes_issues_only": true,
+    "fix_no_amount_mutation": true,
+    "fix_no_risk_guard_mutation": true,
+    "fix_no_transaction_created": true,
+    "fix_no_pool_deduction": true,
+    "audit_log_written": true,
+    "mock_valuation_blocked": true
   },
   "safety": {
     "no_auto_trade": true,
     "no_auto_confirm": true,
-    "valuation_does_not_modify_amount": true
+    "no_amount_mutation": true
   }
 }
