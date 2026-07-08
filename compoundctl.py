@@ -17,20 +17,29 @@ LOGS_DIR = ROOT / "logs"
 
 PROJECT_PYTHON = None
 
-def _project_python():
+def resolve_project_python():
+    """Return dict with executable path + resolution source."""
     env_python = os.environ.get("COMPOUND_PYTHON")
     if env_python:
-        return env_python
+        return {"executable": env_python, "source": "COMPOUND_PYTHON",
+                "exists": os.path.exists(env_python), "is_file": os.path.isfile(env_python)}
 
     win_python = ROOT / ".venv" / "Scripts" / "python.exe"
     posix_python = ROOT / ".venv" / "bin" / "python"
 
     if win_python.exists():
-        return str(win_python)
+        return {"executable": str(win_python), "source": "windows_venv",
+                "exists": True, "is_file": win_python.is_file()}
     if posix_python.exists():
-        return str(posix_python)
+        return {"executable": str(posix_python), "source": "posix_venv",
+                "exists": True, "is_file": posix_python.is_file()}
 
-    return sys.executable
+    return {"executable": sys.executable, "source": "sys_executable",
+            "exists": os.path.exists(sys.executable), "is_file": os.path.isfile(sys.executable)}
+
+def _project_python():
+    """Backward-compatible: return executable path only."""
+    return resolve_project_python()["executable"]
 
 
 def _load_policy():
@@ -386,18 +395,32 @@ def doctor():
     except: pass
 
     # --- Project runtime (subprocess via _project_python) ---
-    project = {"python": None, "executable": None, "pydantic_core": False, "pydantic_core_path": None}
-    pp = _project_python()
-    project["executable"] = pp
+    pp_info = resolve_project_python()
+    project = {"python": None, "executable": pp_info["executable"],
+               "pydantic_core": False, "pydantic_core_path": None,
+               "executable_exists": pp_info["exists"], "executable_is_file": pp_info["is_file"],
+               "path_resolution_source": pp_info["source"],
+               "command": None, "returncode": None, "stdout_tail": "", "stderr_tail": "",
+               "local_verification_required": False}
+    pp = pp_info["executable"]
+    probe_cmd = "import sys, json, platform; import pydantic_core; print(json.dumps({'python': sys.version, 'executable': sys.executable, 'platform': platform.platform(), 'pydantic_core': True, 'pydantic_core_path': pydantic_core.__file__}, ensure_ascii=False))"
+    project["command"] = [pp, "-c", probe_cmd[:80] + "..."]
     try:
         result = subprocess.run(
-            [pp, "-c",
-             "import sys, json; import pydantic_core; print(json.dumps({'python': sys.version.split()[0], 'executable': sys.executable, 'pydantic_core': True, 'pydantic_core_path': pydantic_core.__file__}))"],
-            capture_output=True, text=True, timeout=10)
+            [pp, "-c", probe_cmd],
+            capture_output=True, text=True, timeout=15, cwd=str(ROOT))
+        project["returncode"] = result.returncode
+        project["stdout_tail"] = (result.stdout or "")[-500:]
+        project["stderr_tail"] = (result.stderr or "")[-1000:]
         if result.returncode == 0 and result.stdout.strip():
             project.update(json.loads(result.stdout.strip()))
+        else:
+            project["error"] = f"returncode={result.returncode}"
     except Exception as e:
-        project["error"] = str(e)[:100]
+        project["error"] = str(e)[:200]
+
+    if not project.get("pydantic_core"):
+        project["local_verification_required"] = True
 
     # --- Backend, data, scheduler, frontend ---
     r = {
