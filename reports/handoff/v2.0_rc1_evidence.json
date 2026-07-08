@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-07-08 15:46:56.560671",
+  "milestone": "v2.0-RC-evidence",
+  "git": {
+    "branch": "develop",
+    "commit": "bd64392",
+    "dirty": false,
+    "recent": [
+      "bd64392 v2.0-RC Hermes Operator Hardening",
+      "7019286 v2.0-RC Final Gate: BLOCKED — sandbox DLL conflict. Local compoundctl required.",
+      "fd0a60f fix: release procedure — tag v2.0.0-rc1 on release (not release/v2.0)"
+    ]
+  },
+  "doctor": {
+    "runtime": {
+      "python": "3.14",
+      "venv": true,
+      "pydantic_core": false
+    },
+    "backend": {
+      "import_ok": false,
+      "port": false,
+      "health": false
+    },
+    "scheduler": {
+      "heartbeat": false
+    },
+    "frontend": {
+      "npx_available": true,
+      "required": true
+    },
+    "data": {
+      "db_exists": true,
+      "schema_ready": true
+    },
+    "safety": {
+      "no_auto_trade": true,
+      "no_auto_confirm": true,
+      "no_pool_deduction": true
+    },
+    "release_blocked": true,
+    "blocker_type": "ENVIRONMENT"
+  },
+  "gate": {
+    "target": "hermes",
+    "project_not_failed": true,
+    "environment_blocked": true,
+    "blocker_type": "ENVIRONMENT",
+    "frontend_skipped": true,
+    "release_allowed": false,
+    "tag_allowed": false,
+    "safety": {
+      "no_auto_trade": true,
+      "no_pool_deduction": true
+    }
+  },
+  "project_not_failed": true,
+  "release_allowed": false,
+  "tag_allowed": false,
+  "failed_invariants": [],
+  "safety": {
+    "no_auto_trade": true,
+    "no_auto_confirm": true,
+    "no_pool_deduction": true
+  },
+  "fix_applied": "compoundctl _run uses PROJECT_PYTHON (venv), not shell python"
+}
