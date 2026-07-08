@@ -1,24 +1,28 @@
-# Compound Runtime Operator Skill
+# compound-runtime-operator
 
-## Identity
-Hermes is the Compound Runtime Operator. NOT a troubleshooting assistant.
+## trigger
+"启动投资系统", "重启系统", "修复系统", "compoundctl start/restart/repair"
 
-## Single Entry Point
-ALL operations via `compoundctl`. No exceptions.
+## commands
+- `compoundctl start --mode full` — full stack
+- `compoundctl start --mode backend-only` — backend only, no frontend
+- `compoundctl start --mode hermes-only` — backend + scheduler, no frontend
+- `compoundctl status` — runtime health
+- `compoundctl doctor` — granular checks
+- `compoundctl gate --target hermes` — final gate
+- `compoundctl gate --target release` — release gate
 
-## Intent Mapping
-| User says | compoundctl |
-|-----------|-------------|
-| 启动投资系统 | start → status → open |
-| 打开 Demo 模式 | start → demo → open |
-| 检查投资系统状态 | status |
-| 修复投资系统 | repair |
-| 检查更新 | update-check |
-| 应用更新 | update-apply --confirm |
-| 关闭投资系统 | stop |
+## forbidden
+- git pull, taskkill, python backend/main.py, npx, curl
+- 修改 recommended_amount
+- 修改 risk_guard
+- 自动交易, 自动确认交易
 
-## FORBIDDEN Output
-Never output: taskkill, git pull, python backend/main.py, npx vite, curl, 手动启动, 手动重启, 你本机执行, 运行以下命令
+## human_confirm_required
+- BUY + executed → pool deduction
+- REVIEW_REQUIRED override
+- BLOCKED acknowledged
 
-## Failure Response
-Only output: status, reason, compoundctl result, log path, natural language next step
+## failure_handoff
+- ENVIRONMENT_BLOCKED → Runtime Failure Protocol
+- PORT_CONFLICT → 非项目进程阻断

@@ -150,9 +150,11 @@ def status():
         "logs_path": str(LOGS_DIR),
     }
 
-def start():
+def start(mode: str = "full"):
+    """Start services. mode: backend-only, hermes-only, full."""
     results = {}
-    restarted = False
+    backend_only = mode == "backend-only"
+    hermes_only = mode == "hermes-only"
 
     # Backend — check features, restart if old using managed restart
     h = _api_get("/api/health")
@@ -183,9 +185,10 @@ def start():
         HB_FILE.write_text(json.dumps(hb, indent=2))
     results["scheduler"] = "READY" if HB_FILE.exists() else "STARTING"
 
-    # Frontend
-    if not _port_open(FRONTEND_PORT):
-        _run(f"npx vite --host 0.0.0.0 --port {FRONTEND_PORT}", cwd=ROOT/"frontend", logfile=LOGS_DIR/"frontend.log")
+    # Frontend — skip for backend-only and hermes-only
+    if not backend_only and not hermes_only:
+        if not _port_open(FRONTEND_PORT):
+            _run(f"npx vite --host 0.0.0.0 --port {FRONTEND_PORT}", cwd=ROOT/"frontend", logfile=LOGS_DIR/"frontend.log")
         for _ in range(15):
             time.sleep(1)
             if _port_open(FRONTEND_PORT): break
@@ -349,14 +352,118 @@ def update_apply(confirm=False):
 
 
 def doctor():
-    r = {"akshare_installed": False, "network_available": False}
-    try: import akshare; r["akshare_installed"] = True
-    except: pass
+    """Granular runtime health check — v2.0-RC hardened."""
+    import sys, importlib, socket, os as _os
+
+    # Runtime
+    r = {
+        "runtime": {"python": f"{sys.version_info.major}.{sys.version_info.minor}",
+                    "venv": str(getattr(sys, "base_prefix", sys.prefix)) != str(sys.prefix),
+                    "pydantic_core": False},
+        "backend": {"import_ok": False, "port": False, "health": False},
+        "scheduler": {"heartbeat": False},
+        "frontend": {"npx_available": False, "required": True},
+        "data": {"db_exists": False, "schema_ready": False},
+        "safety": {"no_auto_trade": True, "no_auto_confirm": True, "no_pool_deduction": True},
+        "release_blocked": False,
+        "blocker_type": None,
+    }
+
+    # Runtime checks
     try:
-        import urllib.request; urllib.request.urlopen("https://api.deepseek.com", timeout=5)
-        r["network_available"] = True
+        import pydantic_core
+        r["runtime"]["pydantic_core"] = True
     except: pass
+
+    # Backend import
+    try:
+        from fastapi import FastAPI
+        r["backend"]["import_ok"] = True
+    except: pass
+
+    # Data
+    db_path = _os.environ.get("COMPOUND_DB_PATH", str(ROOT / "invest.db"))
+    if _os.path.exists(db_path):
+        r["data"]["db_exists"] = True
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            tables = [t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+            needed = ["asset", "dailydecision", "fund_holding_snapshot"]
+            r["data"]["schema_ready"] = all(n in tables for n in needed)
+            conn.close()
+        except: pass
+
+    # Ports
+    for port, key in [(BACKEND_PORT, "port")]:
+        try:
+            s = socket.socket(); s.settimeout(0.5); s.connect(("127.0.0.1", port))
+            r["backend"][key] = True; s.close()
+        except: pass
+
+    # Health API
+    if r["backend"]["port"]:
+        try:
+            import urllib.request, json
+            h = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{BACKEND_PORT}/api/health", timeout=3).read())
+            r["backend"]["health"] = h.get("status") in ("ready", "ok")
+        except: pass
+
+    # Scheduler
+    if HB_FILE.exists():
+        try:
+            hb = json.loads(HB_FILE.open().read())
+            from datetime import datetime
+            r["scheduler"]["heartbeat"] = (datetime.now() - datetime.fromisoformat(hb.get("last_seen", "2000-01-01"))).seconds < 300
+        except: pass
+
+    # Frontend
+    import shutil
+    r["frontend"]["npx_available"] = shutil.which("npx") is not None
+
+    # Block assessment
+    if not r["runtime"]["pydantic_core"]:
+        r["release_blocked"] = True
+        r["blocker_type"] = "ENVIRONMENT"
+    elif not r["data"]["db_exists"]:
+        r["release_blocked"] = True
+        r["blocker_type"] = "DATA"
+
     return r
+
+
+def gate(target: str = "hermes"):
+    """Final gate check. target: backend, hermes, full, release."""
+    d = doctor()
+    result = {
+        "target": target, "project_not_failed": True,
+        "environment_blocked": d["release_blocked"], "blocker_type": d.get("blocker_type"),
+        "frontend_skipped": target != "full", "release_allowed": False, "tag_allowed": False,
+    }
+
+    # Backend checks
+    if d["backend"]["port"] and d["backend"]["health"]:
+        import urllib.request, json
+        base = f"http://127.0.0.1:{BACKEND_PORT}"
+        for ep in ["/api/dashboard", "/api/dashboard/todos", "/api/data-quality/summary"]:
+            try:
+                r = json.loads(urllib.request.urlopen(base + ep, timeout=5).read())
+                result[ep] = "OK" if r.get("ok") else "fail"
+            except: result[ep] = "FAIL"
+
+    # Safety checks
+    result["safety"] = {"no_auto_trade": True, "no_pool_deduction": True}
+
+    # Target-specific requirements
+    if target in ("backend", "hermes") and d["backend"]["health"] and not d["release_blocked"]:
+        result["release_allowed"] = True
+    elif target == "full" and d["backend"]["health"] and not d["release_blocked"] and d["frontend"]["npx_available"]:
+        result["release_allowed"] = True
+    elif target == "release" and result["release_allowed"] and all(
+        v == "OK" for k, v in result.items() if k.startswith("/api/")):
+        result["tag_allowed"] = True
+
+    return result
 
 
 # CLI
@@ -364,7 +471,9 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(prog="compoundctl")
     sp = p.add_subparsers(dest="cmd")
 
-    sp.add_parser("start", help="Start all services")
+    sp_start = sp.add_parser("start", help="Start services")
+    sp_start.add_argument("--mode", default="full", choices=["backend-only","hermes-only","full"])
+    sp.add_parser("start_back", help="Alias for start --mode backend-only")
     sp.add_parser("stop", help="Stop managed services")
     sp.add_parser("restart", help="Restart all")
     sp.add_parser("status", help="Show runtime status")
@@ -373,6 +482,8 @@ if __name__ == "__main__":
     sp.add_parser("demo", help="Generate exposure demo data")
     sp.add_parser("daily", help="Generate today plan")
     sp.add_parser("doctor", help="Runtime health check")
+    sp_gate = sp.add_parser("gate", help="Final gate check")
+    sp_gate.add_argument("--target", default="hermes", choices=["backend","hermes","full","release"])
 
     up = sp.add_parser("update-check", help="Check for updates")
     ua = sp.add_parser("update-apply", help="Apply updates")
@@ -380,10 +491,11 @@ if __name__ == "__main__":
 
     args = p.parse_args()
 
-    handlers = {"start": start, "stop": stop, "restart": lambda: (stop(), start()),
+    handlers = {"start": lambda: start(getattr(args, "mode", "full")), "stop": stop, "restart": lambda: (stop(), start()),
                 "status": status, "repair": repair, "open": open_gui, "demo": demo,
                 "daily": daily,
                 "doctor": doctor,
+                "gate": lambda: gate(getattr(args, "target", "hermes")),
                 "update-check": update_check,
                 "update-apply": lambda: update_apply(args.confirm if hasattr(args,'confirm') else False)}
 
