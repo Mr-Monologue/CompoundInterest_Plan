@@ -14,6 +14,25 @@ POLICY_FILE = ROOT / "hermes/runtime/runtime_policy.yaml"
 AUDIT_FILE = ROOT / "logs/runtime_audit.jsonl"
 LOGS_DIR = ROOT / "logs"
 
+
+PROJECT_PYTHON = None
+
+def _project_python():
+    env_python = os.environ.get("COMPOUND_PYTHON")
+    if env_python:
+        return env_python
+
+    win_python = ROOT / ".venv" / "Scripts" / "python.exe"
+    posix_python = ROOT / ".venv" / "bin" / "python"
+
+    if win_python.exists():
+        return str(win_python)
+    if posix_python.exists():
+        return str(posix_python)
+
+    return sys.executable
+
+
 def _load_policy():
     try:
         import yaml
@@ -126,7 +145,7 @@ def _restart_managed_backend():
         return rr
     # Start fresh with absolute DB path
     db_path = str(ROOT / "invest.db")
-    _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log",
+    _run(f"{_project_python()} -m backend.main", logfile=LOGS_DIR/"backend.log",
          env={"COMPOUND_DB_PATH": db_path})
     for _ in range(20):
         time.sleep(1)
@@ -166,7 +185,7 @@ def start(mode: str = "full"):
             results.update(rr)
             return results
     elif not _port_open(BACKEND_PORT):
-        _run(f"python -m backend.main", logfile=LOGS_DIR/"backend.log",
+        _run(f"{_project_python()} -m backend.main", logfile=LOGS_DIR/"backend.log",
              env={"COMPOUND_DB_PATH": db_path})
         for _ in range(20):
             time.sleep(1)
@@ -175,7 +194,7 @@ def start(mode: str = "full"):
 
     # Scheduler — start and write heartbeat
     if not HB_FILE.exists() or (json.loads(HB_FILE.open().read()) if HB_FILE.exists() else {}).get("status") != "alive":
-        _run(f"python -m hermes.runtime.scheduler", logfile=LOGS_DIR/"scheduler.log")
+        _run(f"{_project_python()} -m hermes.runtime.scheduler", logfile=LOGS_DIR/"scheduler.log")
         time.sleep(2)
         # Write initial heartbeat so status shows READY
         HB_FILE.parent.mkdir(parents=True, exist_ok=True)
