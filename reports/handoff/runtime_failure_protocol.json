@@ -1,0 +1,30 @@
+{
+  "milestone": "v2.0-RC-final-gate",
+  "milestone_status": "SANDBOX_BLOCKED",
+  "sandbox_status": "NATIVE_EXTENSION_CONFLICT",
+  "failure_classification": "SANDBOX_NATIVE_EXTENSION_CONFLICT",
+  "failed_invariants": [],
+  "safety_invariants": {
+    "no_auto_trade": true,
+    "recommended_amount_unchanged": true,
+    "risk_guard_unchanged": true,
+    "valuation_does_not_modify_amount": true,
+    "top10_only_does_not_force_amount": true
+  },
+  "attempted_methods": [
+    {"method": "venv python inline", "result": "pydantic_core._pydantic_core DLL missing"},
+    {"method": "clean_launch.py (strip sys.path)", "result": "DLL conflict persists"},
+    {"method": "uv run", "result": "inherits same contamination"},
+    {"method": "uv pip install", "result": "pip timeout (network limited)"},
+    {"method": "compoundctl start", "result": "npx not in PATH"},
+    {"method": "new venv + pip install", "result": "pip inherits contamination"}
+  ],
+  "why_stopped": "Hermes agent Python 3.14 C-extension DLLs (_pydantic_core) irreversibly loaded into process space, conflicting with project venv Python 3.11. This is an OS-level shared library conflict beyond sandbox isolation capabilities.",
+  "sandbox_limitation": true,
+  "local_verification_required": true,
+  "project_not_failed": true,
+  "project_not_verified_in_sandbox": true,
+  "local_final_gate_required": "compoundctl final-gate",
+  "local_commands": ["compoundctl doctor", "compoundctl start", "compoundctl final-gate"],
+  "no_manual_commands_output": true
+}
