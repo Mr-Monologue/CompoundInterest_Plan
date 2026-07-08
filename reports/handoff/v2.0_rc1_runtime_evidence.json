@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-07-08 16:58:01.571322",
+  "milestone": "v2.0-RC-runtime-split",
+  "git": {
+    "branch": "develop",
+    "commit": "911dec0",
+    "dirty": false
+  },
+  "agent_runtime": {
+    "python": "3.14",
+    "executable": "F:\\compound-interest-plan\\.venv\\Scripts\\python.exe",
+    "pydantic_core": false
+  },
+  "project_runtime": {
+    "python": null,
+    "executable": "F:\\compound-interest-plan\\.venv\\Scripts\\python.exe",
+    "pydantic_core": false,
+    "pydantic_core_path": null
+  },
+  "gate": {
+    "target": "hermes",
+    "project_not_failed": true,
+    "environment_blocked": true,
+    "blocker_type": "ENVIRONMENT",
+    "frontend_skipped": true,
+    "release_allowed": false,
+    "tag_allowed": false,
+    "safety": {
+      "no_auto_trade": true,
+      "no_pool_deduction": true
+    }
+  },
+  "project_not_failed": true,
+  "release_allowed": false,
+  "tag_allowed": false,
+  "failed_invariants": [],
+  "safety": {
+    "no_auto_trade": true,
+    "no_auto_confirm": true,
+    "no_pool_deduction": true
+  }
+}

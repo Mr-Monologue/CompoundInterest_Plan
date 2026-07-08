@@ -371,14 +371,38 @@ def update_apply(confirm=False):
 
 
 def doctor():
-    """Granular runtime health check — v2.0-RC hardened."""
-    import sys, importlib, socket, os as _os
+    """Granular runtime health check — v2.0-RC split agent/project."""
+    import sys, socket, os as _os, json
 
-    # Runtime
+    # --- Agent runtime (in-process, current Python) ---
+    agent = {
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "executable": sys.executable,
+        "pydantic_core": False,
+    }
+    try:
+        import pydantic_core
+        agent["pydantic_core"] = True
+    except: pass
+
+    # --- Project runtime (subprocess via _project_python) ---
+    project = {"python": None, "executable": None, "pydantic_core": False, "pydantic_core_path": None}
+    pp = _project_python()
+    project["executable"] = pp
+    try:
+        result = subprocess.run(
+            [pp, "-c",
+             "import sys, json; import pydantic_core; print(json.dumps({'python': sys.version.split()[0], 'executable': sys.executable, 'pydantic_core': True, 'pydantic_core_path': pydantic_core.__file__}))"],
+            capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            project.update(json.loads(result.stdout.strip()))
+    except Exception as e:
+        project["error"] = str(e)[:100]
+
+    # --- Backend, data, scheduler, frontend ---
     r = {
-        "runtime": {"python": f"{sys.version_info.major}.{sys.version_info.minor}",
-                    "venv": str(getattr(sys, "base_prefix", sys.prefix)) != str(sys.prefix),
-                    "pydantic_core": False},
+        "agent_runtime": agent,
+        "project_runtime": project,
         "backend": {"import_ok": False, "port": False, "health": False},
         "scheduler": {"heartbeat": False},
         "frontend": {"npx_available": False, "required": True},
@@ -386,13 +410,9 @@ def doctor():
         "safety": {"no_auto_trade": True, "no_auto_confirm": True, "no_pool_deduction": True},
         "release_blocked": False,
         "blocker_type": None,
+        "agent_environment_blocked": False,
+        "project_environment_blocked": False,
     }
-
-    # Runtime checks
-    try:
-        import pydantic_core
-        r["runtime"]["pydantic_core"] = True
-    except: pass
 
     # Backend import
     try:
@@ -413,22 +433,19 @@ def doctor():
             conn.close()
         except: pass
 
-    # Ports
     for port, key in [(BACKEND_PORT, "port")]:
         try:
             s = socket.socket(); s.settimeout(0.5); s.connect(("127.0.0.1", port))
             r["backend"][key] = True; s.close()
         except: pass
 
-    # Health API
     if r["backend"]["port"]:
         try:
-            import urllib.request, json
+            import urllib.request
             h = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{BACKEND_PORT}/api/health", timeout=3).read())
             r["backend"]["health"] = h.get("status") in ("ready", "ok")
         except: pass
 
-    # Scheduler
     if HB_FILE.exists():
         try:
             hb = json.loads(HB_FILE.open().read())
@@ -436,12 +453,14 @@ def doctor():
             r["scheduler"]["heartbeat"] = (datetime.now() - datetime.fromisoformat(hb.get("last_seen", "2000-01-01"))).seconds < 300
         except: pass
 
-    # Frontend
     import shutil
     r["frontend"]["npx_available"] = shutil.which("npx") is not None
 
-    # Block assessment
-    if not r["runtime"]["pydantic_core"]:
+    # Block assessment: project_runtime is authoritative
+    if not agent["pydantic_core"]:
+        r["agent_environment_blocked"] = True
+    if not project.get("pydantic_core"):
+        r["project_environment_blocked"] = True
         r["release_blocked"] = True
         r["blocker_type"] = "ENVIRONMENT"
     elif not r["data"]["db_exists"]:
@@ -449,6 +468,7 @@ def doctor():
         r["blocker_type"] = "DATA"
 
     return r
+
 
 
 def gate(target: str = "hermes"):
