@@ -42,6 +42,22 @@ def _project_python():
     return resolve_project_python()["executable"]
 
 
+def _project_env(extra=None):
+    """Return isolated env dict for project subprocesses.
+    Strips PYTHONPATH/PYTHONHOME contamination from Hermes agent."""
+    env = os.environ.copy()
+    for key in ["PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE", "__PYVENV_LAUNCHER__"]:
+        env.pop(key, None)
+    env["PYTHONNOUSERSITE"] = "1"
+    env["VIRTUAL_ENV"] = str(ROOT / ".venv")
+    scripts = ROOT / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+    env["PATH"] = str(scripts) + os.pathsep + env.get("PATH", "")
+    env["COMPOUND_DB_PATH"] = str(ROOT / "invest.db")
+    if extra:
+        env.update(extra)
+    return env
+
+
 def _load_policy():
     try:
         import yaml
@@ -403,12 +419,13 @@ def doctor():
                "command": None, "returncode": None, "stdout_tail": "", "stderr_tail": "",
                "local_verification_required": False}
     pp = pp_info["executable"]
-    probe_cmd = "import sys, json, platform; import pydantic_core; print(json.dumps({'python': sys.version, 'executable': sys.executable, 'platform': platform.platform(), 'pydantic_core': True, 'pydantic_core_path': pydantic_core.__file__}, ensure_ascii=False))"
-    project["command"] = [pp, "-c", probe_cmd[:80] + "..."]
+    probe_cmd = "import sys, json, platform; import pydantic_core; print(json.dumps({'python': sys.version, 'executable': sys.executable, 'platform': platform.platform(), 'pydantic_core': True, 'pydantic_core_path': pydantic_core.__file__, 'sys_path': sys.path}, ensure_ascii=False))"
+    project["command"] = [pp, "-I", "-c", probe_cmd[:80] + "..."]
     try:
         result = subprocess.run(
-            [pp, "-c", probe_cmd],
-            capture_output=True, text=True, timeout=15, cwd=str(ROOT))
+            [pp, "-I", "-c", probe_cmd],
+            capture_output=True, text=True, timeout=15, cwd=str(ROOT),
+            env=_project_env())
         project["returncode"] = result.returncode
         project["stdout_tail"] = (result.stdout or "")[-500:]
         project["stderr_tail"] = (result.stderr or "")[-1000:]
