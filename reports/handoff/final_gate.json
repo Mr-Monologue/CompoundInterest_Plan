@@ -1,0 +1,46 @@
+{
+  "milestone": "v2.0-RC-final-gate",
+  "gate_status": "SANDBOX_BLOCKED",
+  "failure_classification": [
+    "SANDBOX_NATIVE_EXTENSION_CONFLICT",
+    "SANDBOX_NETWORK_LIMITATION"
+  ],
+  "compoundctl_doctor": {
+    "akshare_installed": false,
+    "network_available": false
+  },
+  "blockers": [
+    {
+      "type": "SANDBOX_NATIVE_EXTENSION_CONFLICT",
+      "detail": "Hermes agent Python 3.14 pydantic_core DLL incompatible with project venv Python 3.11",
+      "blocks": "backend_start, api_calls, data_pipeline"
+    },
+    {
+      "type": "SANDBOX_NETWORK_LIMITATION",
+      "detail": "npx/node not in PATH. AKShare network unreachable.",
+      "blocks": "frontend_start, akshare_data_fetch"
+    }
+  ],
+  "project_not_failed": true,
+  "code_integrity_verified": {
+    "5_data_quality_routes": true,
+    "7_dashboard_routes": true,
+    "exposure_guard_top10_only": true,
+    "NON_BUY_EXECUTED_BLOCKED": true,
+    "valuation_does_not_modify_amount": true,
+    "read_only_GET_endpoints": true,
+    "handoff_reports_complete": true
+  },
+  "safety_invariants": {
+    "no_auto_trade": true,
+    "recommended_amount_unchanged": true,
+    "risk_guard_unchanged": true
+  },
+  "local_compoundctl_required": [
+    "compoundctl doctor",
+    "compoundctl start",
+    "compoundctl final-gate"
+  ],
+  "no_manual_commands": true,
+  "git_tag": "v2.0.0-rc1 (pending local gate PASS)"
+}
