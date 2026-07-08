@@ -1,0 +1,21 @@
+{
+  "release": "v2.0.0-rc1",
+  "target_branch": "release",
+  "created_version_branch": false,
+  "tag": "v2.0.0-rc1",
+  "final_gate_status": "SANDBOX_BLOCKED",
+  "sandbox_status": "NATIVE_EXTENSION_CONFLICT",
+  "local_final_gate_status": "PENDING",
+  "failed_invariants": [],
+  "procedure": {
+    "if_local_PASS": "merge develop→release → final-gate on release → git tag v2.0.0-rc1 → push release + tags",
+    "if_local_FAIL": "no tag, output failed_invariants",
+    "if_local_BLOCKED": "Runtime Failure Protocol handoff, no tag"
+  },
+  "safety": {
+    "no_auto_trade": true,
+    "recommended_amount_unchanged": true,
+    "risk_guard_unchanged": true
+  },
+  "no_manual_commands_output": true
+}
