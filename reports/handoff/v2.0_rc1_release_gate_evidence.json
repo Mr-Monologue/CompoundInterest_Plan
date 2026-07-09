@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-07-09 11:13:04.162404",
+  "milestone": "v2.0-RC-release-gate",
+  "git": {
+    "branch": "develop",
+    "commit": "fdafbae",
+    "dirty": false
+  },
+  "doctor": {
+    "agent_pydantic_core": false,
+    "project_pydantic_core": true,
+    "pydantic_core_path": "F:\\compound-interest-plan\\.venv\\Lib\\site-packages\\pydantic_core\\__init__.py",
+    "project_environment_blocked": false,
+    "release_blocked": false,
+    "sys_path_clean": true
+  },
+  "gate": {
+    "target": "hermes",
+    "project_not_failed": true,
+    "environment_blocked": false,
+    "blocker_type": null,
+    "frontend_skipped": true,
+    "release_allowed": false,
+    "tag_allowed": false,
+    "safety": {
+      "no_auto_trade": true,
+      "no_pool_deduction": true
+    }
+  },
+  "backend_running": false,
+  "backend_note": "sandbox uvicorn binding issue (unrelated to pydantic env fix)",
+  "environment_unblocked": true,
+  "release_allowed": false,
+  "tag_allowed": false,
+  "failed_invariants": [],
+  "models_restored": true,
+  "safety": {
+    "no_auto_trade": true,
+    "no_auto_confirm": true,
+    "no_pool_deduction": true
+  }
+}
