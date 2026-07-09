@@ -171,7 +171,7 @@ def _restart_managed_backend():
     # Start fresh with absolute DB path
     db_path = str(ROOT / "invest.db")
     _run(f"{_project_python()} -m backend.main", logfile=LOGS_DIR/"backend.log",
-         env={"COMPOUND_DB_PATH": db_path})
+         env=_project_env())
     for _ in range(20):
         time.sleep(1)
         if _port_open(BACKEND_PORT): break
@@ -210,8 +210,9 @@ def start(mode: str = "full"):
             results.update(rr)
             return results
     elif not _port_open(BACKEND_PORT):
+        db_path = str(ROOT / "invest.db")
         _run(f"{_project_python()} -m backend.main", logfile=LOGS_DIR/"backend.log",
-             env={"COMPOUND_DB_PATH": db_path})
+             env=_project_env())
         for _ in range(20):
             time.sleep(1)
             if _port_open(BACKEND_PORT): break
