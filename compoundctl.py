@@ -86,14 +86,14 @@ def _api_post(path, timeout=10):
     except: return None
 
 def _run(cmd, cwd=None, logfile=None, env=None):
-    kw = {"cwd": str(cwd or ROOT), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    proc_env = _project_env()
     if env:
-        kw["env"] = {**os.environ, **env}
+        proc_env.update(env)
     if logfile:
         Path(logfile).parent.mkdir(parents=True, exist_ok=True)
-        with open(logfile, "a") as f:
-            return subprocess.Popen(cmd.split(), cwd=str(cwd or ROOT), stdout=f, stderr=f)
-    return subprocess.Popen(cmd.split(), **kw)
+        f = open(str(logfile), "a", encoding="utf-8", errors="replace")
+        return subprocess.Popen(cmd.split(), cwd=str(cwd or ROOT), env=proc_env, stdout=f, stderr=f)
+    return subprocess.Popen(cmd.split(), cwd=str(cwd or ROOT), env=proc_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def _read_state():
     if STATE_FILE.exists():
@@ -521,6 +521,8 @@ def gate(target: str = "hermes"):
         "frontend_skipped": target != "full", "release_allowed": False, "tag_allowed": False,
     }
 
+    backend_ok = d["backend"]["health"] and not d["release_blocked"]
+
     # Backend checks
     if d["backend"]["port"] and d["backend"]["health"]:
         import urllib.request, json
@@ -535,13 +537,14 @@ def gate(target: str = "hermes"):
     result["safety"] = {"no_auto_trade": True, "no_pool_deduction": True}
 
     # Target-specific requirements
-    if target in ("backend", "hermes") and d["backend"]["health"] and not d["release_blocked"]:
-        result["release_allowed"] = True
-    elif target == "full" and d["backend"]["health"] and not d["release_blocked"] and d["frontend"]["npx_available"]:
-        result["release_allowed"] = True
-    elif target == "release" and result["release_allowed"] and all(
-        v == "OK" for k, v in result.items() if k.startswith("/api/")):
-        result["tag_allowed"] = True
+    api_ok = all(v == "OK" for k, v in result.items() if k.startswith("/api/"))
+    if target in ("backend", "hermes"):
+        result["release_allowed"] = backend_ok
+    elif target == "full":
+        result["release_allowed"] = backend_ok and d["frontend"]["npx_available"]
+    elif target == "release":
+        result["release_allowed"] = backend_ok and api_ok
+        result["tag_allowed"] = result["release_allowed"]
 
     return result
 
