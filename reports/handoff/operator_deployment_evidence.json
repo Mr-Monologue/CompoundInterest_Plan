@@ -1,0 +1,36 @@
+{
+  "branch": "develop",
+  "commit": "4b3aeaa",
+  "generated_at": "2026-07-10",
+  "platform": "windows+linux",
+  "windows_tasks_defined": true,
+  "linux_services_defined": true,
+  "backend_running": false,
+  "scheduler_running": false,
+  "healthcheck_timer_active": false,
+  "auto_recovery_available": true,
+  "auto_recovery_behavior": "compound_healthcheck.ps1/sh re-runs compoundctl start --mode hermes-only on failure",
+  "windows_details": {
+    "install_script": "ops/windows/install_operator_tasks.ps1",
+    "operator_script": "ops/windows/compound_operator.ps1",
+    "healthcheck_script": "ops/windows/compound_healthcheck.ps1",
+    "runas_default": "current_user",
+    "auto_pull": false,
+    "dirty_blocks_start": true
+  },
+  "linux_details": {
+    "services": ["compound-backend.service", "compound-scheduler.service"],
+    "timer": "compound-healthcheck.timer",
+    "healthcheck_script": "ops/linux/compound_healthcheck.sh",
+    "restart_policy": "on-failure, 30s delay, max 5 bursts in 300s"
+  },
+  "safety": {
+    "no_auto_trade": true,
+    "no_auto_confirm": true,
+    "no_pool_deduction": true,
+    "no_auto_git_pull": true,
+    "recommended_amount_unchanged": true,
+    "risk_guard_unchanged": true,
+    "exposure_guard_unchanged": true
+  }
+}
