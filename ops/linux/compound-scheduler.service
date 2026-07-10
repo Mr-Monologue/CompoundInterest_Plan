@@ -1,0 +1,17 @@
+[Unit]
+Description=CompoundInterestPlan Scheduler
+After=compound-backend.service
+Requires=compound-backend.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/compound-interest-plan
+ExecStart=/home/pi/compound-interest-plan/.venv/bin/python compoundctl.py start --mode hermes-only
+Restart=on-failure
+RestartSec=30
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+[Install]
+WantedBy=multi-user.target

@@ -1,12 +1,13 @@
 #!/bin/bash
 set -e
-SERVICES_DIR="$(dirname "$0")"
-cp "$SERVICES_DIR"/compound-backend.service /etc/systemd/system/
-cp "$SERVICES_DIR"/compound-healthcheck.service /etc/systemd/system/
-cp "$SERVICES_DIR"/compound-healthcheck.timer /etc/systemd/system/
+SRV="$(dirname "$0")"
+for f in compound-backend.service compound-scheduler.service compound-healthcheck.service compound-healthcheck.timer; do
+    cp "$SRV/$f" /etc/systemd/system/
+done
 systemctl daemon-reload
-systemctl enable compound-backend.service
-systemctl enable compound-healthcheck.timer
-systemctl start compound-backend.service
-systemctl start compound-healthcheck.timer
-echo "Operator installed. Check: systemctl status compound-backend compound-healthcheck.timer"
+for u in compound-backend.service compound-scheduler.service compound-healthcheck.timer; do
+    systemctl enable "$u"
+    systemctl start "$u" 2>/dev/null || true
+done
+echo "=== Operator Services ==="
+systemctl status compound-backend.service compound-scheduler.service compound-healthcheck.timer --no-pager
