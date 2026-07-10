@@ -1,0 +1,9 @@
+[Unit]
+Description=CompoundInterestPlan Health Check (15min)
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

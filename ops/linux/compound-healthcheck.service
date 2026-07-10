@@ -1,0 +1,11 @@
+[Unit]
+Description=CompoundInterestPlan Health Check
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/compound-interest-plan
+ExecStart=/home/pi/compound-interest-plan/.venv/bin/python compoundctl.py doctor
+ExecStartPost=/home/pi/compound-interest-plan/.venv/bin/python compoundctl.py gate --target hermes
+StandardOutput=append:/home/pi/compound-interest-plan/logs/operator_health.log
+StandardError=append:/home/pi/compound-interest-plan/logs/operator_health.log
