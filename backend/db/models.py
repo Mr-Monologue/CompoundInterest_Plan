@@ -30,6 +30,8 @@ class MarketSnapshot(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     asset_code: str = Field(index=True)
     data_date: str = ""
+    # __table_args__ ensures one snapshot per asset per day
+    __table_args__ = (UniqueConstraint("asset_code", "data_date", name="uq_market_snapshot_date"),)
     nav: Optional[float] = None
     nav_source: str = ""
     proxy_code: str = ""
@@ -390,6 +392,17 @@ class WeeklyPlanItem(SQLModel, table=True):
     reason_summary: str = ""
     calculation_trace: str = "{}"
     created_at: datetime = Field(default_factory=datetime.now)
+    # v2.1: Full audit persistence
+    market_snapshot_id: Optional[int] = None
+    market_data_date: str = ""
+    data_source: str = ""
+    proxy_code: str = ""
+    dev_pct: Optional[float] = None
+    allocated_fixed: Optional[float] = None
+    allocated_dynamic: Optional[float] = None
+    exposure_status: str = "unknown"
+    exposure_reasons: str = ""
+    strategy_version: str = ""
 
 
 class DecisionJournalEntry(SQLModel, table=True):

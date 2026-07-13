@@ -185,6 +185,15 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
             review_count = 0
 
             for it in all_items:
+                # Data quality gate: hide amounts for non-PASS
+                dq = it.get("data_quality_status", "PASS")
+                if dq not in ("PASS", "WARNING"):
+                    it["candidate_amount"] = None
+                    it["final_amount"] = None
+                    if dq != "REVIEW_REQUIRED":
+                        it["candidate_action"] = "REVIEW_REQUIRED"
+
+                mkt = markets.get(it["asset_code"])
                 item = WeeklyPlanItem(weekly_plan_id=existing.id, asset_code=it["asset_code"],
                                       asset_role=it["asset_role"],
                                       fixed_amount=it.get("fixed_amount"),
@@ -196,7 +205,18 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
                                       risk_status=it.get("risk_status", "ok"),
                                       data_quality_status=it.get("data_quality_status", "unknown"),
                                       calculation_trace=str(it.get("calculation_trace", "{}")),
-                                      reason_summary=it.get("exposure_reasons", ""))
+                                      reason_summary=it.get("exposure_reasons", ""),
+                                      # Audit persistence
+                                      market_snapshot_id=mkt.id if mkt else None,
+                                      market_data_date=str(getattr(mkt, "data_date", "")),
+                                      data_source=str(getattr(mkt, "market_source", "")),
+                                      proxy_code=str(getattr(mkt, "proxy_code", "")),
+                                      dev_pct=float(getattr(mkt, "dev_pct", 0) or 0) if mkt else None,
+                                      allocated_fixed=it.get("allocated_fixed"),
+                                      allocated_dynamic=it.get("allocated_dynamic"),
+                                      exposure_status=it.get("exposure_status", "unknown"),
+                                      exposure_reasons=it.get("exposure_reasons", ""),
+                                      strategy_version=config.strategy_version)
                 session.add(item)
                 if it.get("candidate_amount"):
                     total_candidate += Decimal(str(it["candidate_amount"]))
@@ -324,6 +344,10 @@ def freeze_weekly_plan(session, plan_id):
             risk_status=item.risk_status or "", exposure_status="",
             calculation_trace=item.calculation_trace or "",
             evidence_json=str({"asset_code": item.asset_code, "action": item.action}),
+            market_data_date=item.market_data_date or "",
+            data_source=item.data_source or "",
+            proxy_code=item.proxy_code or "",
+            exposure_status=item.exposure_status or "unknown",
         )
         session.add(journal); journals += 1
     session.commit()
