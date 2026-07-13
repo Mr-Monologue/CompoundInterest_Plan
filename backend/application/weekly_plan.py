@@ -1,5 +1,5 @@
 """v2.1 Weekly Plan — application layer skeleton."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from sqlmodel import Session, select
 from db.models import (InvestmentPlanConfig, WeeklyInvestmentPlan, WeeklyPlanItem,
                        DecisionJournalEntry, DailyDecision, Asset)
@@ -20,7 +20,9 @@ def create_draft_weekly_plan(session: Session, week_start: str = "", config_id: 
     if existing:
         return {"ok": True, "plan_id": existing.id, "status": existing.status, "idempotent": True}
 
-    config = session.get(InvestmentPlanConfig, config_id) or InvestmentPlanConfig(id=config_id)
+    config = session.get(InvestmentPlanConfig, config_id)
+    if not config:
+        return {"ok": False, "error_code": "CONFIG_NOT_FOUND", "error": f"Config id={config_id} does not exist"}
     plan = WeeklyInvestmentPlan(week_start=week_start, week_end=week_end, config_id=config_id,
                                 strategy_version=config.strategy_version,
                                 available_budget=config.weekly_budget,
@@ -41,10 +43,11 @@ def add_existing_decisions_to_plan(session: Session, plan_id: int, date_str: str
     if plan.status != "DRAFT":
         return {"ok": False, "error": "Plan is frozen, cannot add items"}
 
-    if not date_str:
-        date_str = date.today().isoformat()
-
-    decisions = session.exec(select(DailyDecision).where(DailyDecision.date >= date_str)).all()
+    # Bind decisions within the plan's week range
+    decisions = session.exec(select(DailyDecision).where(
+        DailyDecision.date >= plan.week_start,
+        DailyDecision.date <= plan.week_end
+    )).all()
     assets = {a.code: a for a in session.exec(select(Asset)).all()}
     added = 0
 
