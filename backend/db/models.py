@@ -24,6 +24,24 @@ class Asset(SQLModel, table=True):
     enabled: bool = True
 
 
+# v2.1: MarketSnapshot — nav, proxy, MA200 (separate from FundHoldingSnapshot)
+class MarketSnapshot(SQLModel, table=True):
+    __tablename__ = "market_snapshot"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    asset_code: str = Field(index=True)
+    data_date: str = ""
+    nav: Optional[float] = None
+    nav_source: str = ""
+    proxy_code: str = ""
+    proxy_close: Optional[float] = None
+    proxy_ma200: Optional[float] = None
+    dev_pct: Optional[float] = None
+    market_source: str = ""
+    is_trusted: bool = True
+    quality_status: str = "PASS"
+    fetched_at: datetime = Field(default_factory=datetime.now)
+
+
 # 2. 交易表
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -385,3 +403,17 @@ class DecisionJournalEntry(SQLModel, table=True):
     known_unknowns: str = ""
     user_note: str = ""
     immutable: bool = True
+    # v2.1: Frozen evidence fields
+    strategy_version: str = ""
+    market_data_date: str = ""
+    data_source: str = ""
+    proxy_code: str = ""
+    valuation_state: str = ""
+    fixed_amount: Optional[float] = None
+    dynamic_amount: Optional[float] = None
+    candidate_amount: Optional[float] = None
+    final_amount: Optional[float] = None
+    risk_status: str = ""
+    exposure_status: str = ""
+    calculation_trace: str = ""
+    evidence_json: str = "{}"
