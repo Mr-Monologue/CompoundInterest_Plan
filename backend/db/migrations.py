@@ -125,6 +125,18 @@ def migrate(db_path: str):
     conn.commit()
     conn.close()
 
+    # ── Phase 2: Unique indexes (separate connection for idempotency) ──
+    conn2 = sqlite3.connect(str(db))
+    conn2.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_weekly_plan_week_config "
+        "ON weekly_investment_plan(week_start, config_id)")
+    conn2.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_weekly_plan_decision "
+        "ON weekly_plan_item(weekly_plan_id, daily_decision_id) "
+        "WHERE daily_decision_id IS NOT NULL")
+    conn2.commit()
+    conn2.close()
+
     return {
         "ok": True,
         "version": "v2.1",

@@ -1,5 +1,6 @@
 from typing import Optional
 from sqlmodel import Field, SQLModel
+from sqlalchemy import UniqueConstraint
 from datetime import datetime
 
 
@@ -330,7 +331,7 @@ class InvestmentPlanConfig(SQLModel, table=True):
 
 class WeeklyInvestmentPlan(SQLModel, table=True):
     __tablename__ = "weekly_investment_plan"
-    __table_args__ = {"sqlite_autoincrement": True}
+    __table_args__ = (UniqueConstraint("week_start", "config_id", name="uq_weekly_plan_week_config"),)
     id: Optional[int] = Field(default=None, primary_key=True)
     week_start: str = ""
     week_end: str = ""
@@ -348,7 +349,7 @@ class WeeklyInvestmentPlan(SQLModel, table=True):
 
 class WeeklyPlanItem(SQLModel, table=True):
     __tablename__ = "weekly_plan_item"
-    __table_args__ = {"sqlite_autoincrement": True}
+    __table_args__ = (UniqueConstraint("weekly_plan_id", "daily_decision_id", name="uq_weekly_plan_decision"),)
     id: Optional[int] = Field(default=None, primary_key=True)
     weekly_plan_id: int = 0
     asset_code: str = ""
