@@ -341,6 +341,12 @@ class WeeklyInvestmentPlan(SQLModel, table=True):
     available_budget: float = 0.0
     core_budget: float = 0.0
     satellite_budget: float = 0.0
+    total_candidate_amount: float = 0.0
+    total_final_amount: float = 0.0
+    unallocated_core_budget: float = 0.0
+    unallocated_satellite_budget: float = 0.0
+    blocked_item_count: int = 0
+    review_required_item_count: int = 0
     data_quality_status: str = "unknown"
     exposure_status: str = "unknown"
     created_at: datetime = Field(default_factory=datetime.now)

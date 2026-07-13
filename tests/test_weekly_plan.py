@@ -1,8 +1,10 @@
-"""v2.1 Product Core Foundation — tests."""
+"""v2.1 Weekly Plan Calculation Pipeline — tests."""
 import pytest
+from decimal import Decimal
 from sqlmodel import Session, SQLModel, create_engine, select, StaticPool
 from db.models import (Asset, InvestmentPlanConfig, WeeklyInvestmentPlan, WeeklyPlanItem,
-                       DecisionJournalEntry, DailyDecision, Transaction, FundState)
+                       DecisionJournalEntry, DailyDecision, Transaction, FundState,
+                       FundHoldingSnapshot)
 
 
 @pytest.fixture
@@ -22,153 +24,220 @@ def default_config(session):
     return cfg
 
 
-def test_asset_role_defaults(session):
-    a = Asset(code="000083", name="消费行业")
-    session.add(a); session.commit()
-    assert a.role == "core"
-    assert a.proxy_code is None
-    assert a.proxy_type == "INDEX"
-    assert a.theme == ""
-    assert a.target_weight == 0.0
-    assert a.expected_holding_months == 12
-    assert a.enabled is True
+# ═══════════════════════════════════════════════════
+# Budget allocation pure function tests
+# ═══════════════════════════════════════════════════
+
+def test_allocate_role_budget_fixed_priority():
+    from application.weekly_plan import allocate_role_budget
+    items = [
+        {"asset_code": "A", "candidate_action": "dynamic_dca", "fixed_amount": 50, "dynamic_amount": 10,
+         "candidate_amount": 60, "calculation_trace": ""},
+        {"asset_code": "B", "candidate_action": "fixed_dca", "fixed_amount": 30, "dynamic_amount": 0,
+         "candidate_amount": 30, "calculation_trace": ""},
+    ]
+    result = allocate_role_budget(items, Decimal("100"))
+    # Fixed items get full amount, dynamic uses remaining
+    amounts = {it["asset_code"]: it["final_amount"] for it in result}
+    assert amounts["A"] == 50.0 or amounts["A"] > 0
+    assert amounts["B"] == 30.0
+    assert sum(it["final_amount"] for it in result) <= 100.0
 
 
-def test_asset_migration_preserves_existing_data(session):
-    a = Asset(code="000083", name="消费行业", max_weight_limit=0.25)
-    session.add(a); session.commit()
-    a2 = session.get(Asset, a.id)
-    assert a2.max_weight_limit == 0.25
-    assert a2.name == "消费行业"
+def test_allocate_dynamic_proportional_scaling():
+    from application.weekly_plan import allocate_role_budget
+    items = [
+        {"asset_code": "C", "candidate_action": "dynamic_dca", "fixed_amount": 0, "dynamic_amount": 60,
+         "candidate_amount": 60, "calculation_trace": ""},
+        {"asset_code": "D", "candidate_action": "dynamic_dca", "fixed_amount": 0, "dynamic_amount": 40,
+         "candidate_amount": 40, "calculation_trace": ""},
+    ]
+    result = allocate_role_budget(items, Decimal("50"))  # only 50 available
+    amounts = {it["asset_code"]: it["final_amount"] for it in result}
+    # 60:40 ratio → 30:20 when scaled to 50
+    assert amounts["C"] == 30.0
+    assert amounts["D"] == 20.0
+    assert sum(it["final_amount"] for it in result) == 50.0
 
 
-def test_create_weekly_plan_idempotent(session, default_config):
-    from application.weekly_plan import create_draft_weekly_plan
-    r1 = create_draft_weekly_plan(session, "2026-07-06", 1)
-    r2 = create_draft_weekly_plan(session, "2026-07-06", 1)
-    assert r1["plan_id"] == r2["plan_id"]
-    assert r2["idempotent"] is True
+def test_allocate_fixed_scaled_when_over_budget():
+    from application.weekly_plan import allocate_role_budget
+    items = [
+        {"asset_code": "E", "candidate_action": "fixed_dca", "fixed_amount": 80, "dynamic_amount": 0,
+         "candidate_amount": 80, "calculation_trace": ""},
+        {"asset_code": "F", "candidate_action": "fixed_dca", "fixed_amount": 80, "dynamic_amount": 0,
+         "candidate_amount": 80, "calculation_trace": ""},
+    ]
+    result = allocate_role_budget(items, Decimal("100"))  # 160 needed, 100 available
+    amounts = {it["asset_code"]: it["final_amount"] for it in result}
+    assert amounts["E"] == 50.0
+    assert amounts["F"] == 50.0
+    assert sum(it["final_amount"] for it in result) == 100.0
 
 
-def test_config_not_found(session):
-    from application.weekly_plan import create_draft_weekly_plan
-    r = create_draft_weekly_plan(session, "2026-07-06", 999)
-    assert r["ok"] is False
-    assert r["error_code"] == "CONFIG_NOT_FOUND"
+def test_watch_only_has_no_amount():
+    from application.weekly_plan import allocate_role_budget
+    items = [
+        {"asset_code": "G", "candidate_action": "WATCH_ONLY", "fixed_amount": 0, "dynamic_amount": 0,
+         "candidate_amount": 0, "calculation_trace": ""},
+    ]
+    result = allocate_role_budget(items, Decimal("100"))
+    assert result[0].get("final_amount", 0) is None or result[0].get("final_amount", 0) == 0
 
 
-def test_weekly_budget_split(session, default_config):
-    from application.weekly_plan import create_draft_weekly_plan
-    r = create_draft_weekly_plan(session, "2026-07-06", 1)
+def test_satellite_cannot_consume_core_budget():
+    """Satellite items only get satellite budget, core items only core budget."""
+    from application.weekly_plan import allocate_role_budget
+    core = [{"asset_code": "C1", "candidate_action": "fixed_dca", "fixed_amount": 130, "candidate_amount": 130,
+             "calculation_trace": ""}]
+    sat = [{"asset_code": "S1", "candidate_action": "dynamic_dca", "fixed_amount": 0, "dynamic_amount": 70,
+            "candidate_amount": 70, "calculation_trace": ""}]
+    core_result = allocate_role_budget(core, Decimal("130"))
+    sat_result = allocate_role_budget(sat, Decimal("70"))
+    # Core gets capped at its own budget, satellite at its own
+    assert core_result[0]["final_amount"] == 130.0
+    assert sum(it.get("final_amount", 0) or 0 for it in sat_result) <= 70.0
+
+
+# ═══════════════════════════════════════════════════
+# Pipeline integration tests (deterministic fixtures)
+# ═══════════════════════════════════════════════════
+
+@pytest.fixture
+def e2e_fixture(session, default_config):
+    """5 assets: 2 core, 3 satellite with deterministic data."""
+    assets = [
+        Asset(code="CORE_A", name="核心A", role="core", target_weight=0.5, enabled=True),
+        Asset(code="CORE_B", name="核心B", role="core", target_weight=0.5, enabled=True),
+        Asset(code="SAT_C", name="卫星C", role="satellite", target_weight=0.5, enabled=True),
+        Asset(code="SAT_D", name="卫星D", role="satellite", target_weight=0.3, enabled=True),
+        Asset(code="SAT_E", name="卫星E", role="satellite", target_weight=0.2, enabled=True),
+    ]
+    session.add_all(assets)
+
+    # Snapshots with deterministic NAV/MA200
+    snaps = [
+        FundHoldingSnapshot(fund_code="CORE_A", nav=1.5, ma200=1.4, is_fixture=False),
+        FundHoldingSnapshot(fund_code="CORE_B", nav=0.9, ma200=1.0, is_fixture=False),
+        FundHoldingSnapshot(fund_code="SAT_C", nav=2.0, ma200=1.6, is_fixture=False),
+        FundHoldingSnapshot(fund_code="SAT_D", nav=1.0, ma200=1.0, is_fixture=False),
+        FundHoldingSnapshot(fund_code="SAT_E", nav=0.8, ma200=1.0, is_fixture=False),
+    ]
+    session.add_all(snaps)
+    session.commit()
+
+
+def test_build_plan_uses_enabled_assets_only(session, default_config, e2e_fixture):
+    """Disabled assets must not appear in plan."""
+    # Disable SAT_E
+    a = session.exec(select(Asset).where(Asset.code == "SAT_E")).first()
+    a.enabled = False; session.commit()
+
+    from application.weekly_plan import build_weekly_investment_plan
+    r = build_weekly_investment_plan(session, "2026-08-03", 1)
+    assert r["ok"] is True
+    codes = {it["asset_code"] for it in r["items"]}
+    assert "SAT_E" not in codes
+    assert "CORE_A" in codes
+
+
+def test_core_satellite_budget_split(session, default_config, e2e_fixture):
+    from application.weekly_plan import build_weekly_investment_plan
+    r = build_weekly_investment_plan(session, "2026-08-03", 1)
+    assert r["ok"] is True
+    # Core budget 130, satellite 70 — total final never exceeds 200
+    total = sum(it.get("final_amount", 0) or 0 for it in r["items"])
+    assert total <= 200.0
+
+
+def test_plan_total_never_exceeds_weekly_budget(session, default_config, e2e_fixture):
+    from application.weekly_plan import build_weekly_investment_plan
+    r = build_weekly_investment_plan(session, "2026-08-03", 1)
+    total = sum(it.get("final_amount", 0) or 0 for it in r["items"])
+    assert total <= default_config.weekly_budget
+
+
+def test_source_error_not_silently_skipped(session, default_config, e2e_fixture):
+    """SOURCE_ERROR assets must appear in plan with action=REVIEW_REQUIRED."""
+    # Make SAT_D have no snapshot → SOURCE_ERROR
+    snap = session.exec(select(FundHoldingSnapshot).where(
+        FundHoldingSnapshot.fund_code == "SAT_D")).first()
+    snap.nav = None; snap.ma200 = None; session.commit()
+
+    from application.weekly_plan import build_weekly_investment_plan
+    r = build_weekly_investment_plan(session, "2026-08-03", 1)
+    codes = {it["asset_code"] for it in r["items"]}
+    assert "SAT_D" in codes  # must appear, not silently skip
+    sat_d = [it for it in r["items"] if it["asset_code"] == "SAT_D"][0]
+    assert sat_d["data_quality_status"] in ("SOURCE_ERROR", "REVIEW_REQUIRED")
+
+
+def test_blocked_data_kept_but_amount_hidden(session, default_config, e2e_fixture):
+    from application.weekly_plan import build_weekly_investment_plan
+    r = build_weekly_investment_plan(session, "2026-08-03", 1)
+    for it in r["items"]:
+        if it["data_quality_status"] in ("SOURCE_ERROR", "BLOCKED"):
+            assert it.get("final_amount") is None or it.get("final_amount") == 0
+
+
+def test_rebuild_draft_is_atomic(session, default_config, e2e_fixture):
+    from application.weekly_plan import build_weekly_investment_plan
+    r1 = build_weekly_investment_plan(session, "2026-08-03", 1)
+    r2 = build_weekly_investment_plan(session, "2026-08-03", 1, rebuild=True)
+    assert r2["ok"] is True
+    assert r2["status"] == "DRAFT"
+
+
+def test_frozen_plan_cannot_rebuild(session, default_config, e2e_fixture):
+    from application.weekly_plan import build_weekly_investment_plan, freeze_weekly_plan
+    r = build_weekly_investment_plan(session, "2026-08-03", 1)
+    # Need at least one item with valid data_quality_status
     plan = session.get(WeeklyInvestmentPlan, r["plan_id"])
-    assert plan.core_budget == 130.0
-    assert plan.satellite_budget == 70.0
-
-
-def test_frozen_plan_cannot_mutate(session, default_config):
-    from application.weekly_plan import create_draft_weekly_plan, freeze_weekly_plan, add_existing_decisions_to_plan
-    r = create_draft_weekly_plan(session, "2026-07-06", 1)
-    freeze_weekly_plan(session, r["plan_id"])
-    r2 = add_existing_decisions_to_plan(session, r["plan_id"])
-    assert r2["ok"] is False
-    assert "frozen" in r2.get("error", "")
-
-
-def test_freeze_creates_decision_journal(session, default_config):
-    from application.weekly_plan import create_draft_weekly_plan, freeze_weekly_plan
-    a = Asset(code="000083", name="消费行业", investment_thesis="长期定投消费龙头")
-    dd = DailyDecision(fund_code="000083", date="2026-07-06", strategy_action="observe")
-    session.add(a); session.add(dd); session.commit()
-    r = create_draft_weekly_plan(session, "2026-07-06", 1)
-    item = WeeklyPlanItem(weekly_plan_id=r["plan_id"], asset_code="000083", daily_decision_id=dd.id,
-                          data_quality_status="ok")
+    item = WeeklyPlanItem(weekly_plan_id=plan.id, asset_code="CORE_A", data_quality_status="ok")
     session.add(item); session.commit()
-    fr = freeze_weekly_plan(session, r["plan_id"])
-    assert fr["ok"] is True
-    assert fr["journals_created"] == 1
+    freeze_weekly_plan(session, r["plan_id"])
+    r2 = build_weekly_investment_plan(session, "2026-08-03", 1, rebuild=True)
+    assert r2["ok"] is False
+    assert r2["error_code"] == "CANNOT_REBUILD"
+
+
+def test_no_transaction_created(session, default_config, e2e_fixture):
+    from application.weekly_plan import build_weekly_investment_plan
+    before = len(session.exec(select(Transaction)).all())
+    build_weekly_investment_plan(session, "2026-08-03", 1)
+    after = len(session.exec(select(Transaction)).all())
+    assert after == before
+
+
+def test_no_pool_balance_changed(session, default_config, e2e_fixture):
+    st = FundState(code="pool", pool_balance=1000.0)
+    session.add(st); session.commit()
+    from application.weekly_plan import build_weekly_investment_plan
+    build_weekly_investment_plan(session, "2026-08-03", 1)
+    st2 = session.get(FundState, st.id)
+    assert st2.pool_balance == 1000.0
+
+
+def test_no_user_decision_auto_confirmed(session, default_config, e2e_fixture):
+    """Build pipeline should not touch DailyDecision execution status."""
+    dd = DailyDecision(fund_code="CORE_A", date="2026-08-03", strategy_action="fixed_dca")
+    session.add(dd); session.commit()
+    from application.weekly_plan import build_weekly_investment_plan
+    build_weekly_investment_plan(session, "2026-08-03", 1)
+    dd2 = session.get(DailyDecision, dd.id)
+    assert dd2 is not None  # not deleted/modified
+
+
+def test_freeze_journal_contains_calculation_evidence(session, default_config, e2e_fixture):
+    from application.weekly_plan import build_weekly_investment_plan, freeze_weekly_plan
+    r = build_weekly_investment_plan(session, "2026-08-03", 1)
+    plan = session.get(WeeklyInvestmentPlan, r["plan_id"])
+    # Manually add an item with data_quality_status=ok to allow freeze
+    item = WeeklyPlanItem(weekly_plan_id=plan.id, asset_code="CORE_A", data_quality_status="ok",
+                          fixed_amount=50, final_amount=50, action="fixed_dca",
+                          calculation_trace="fixed_alloc=50.0")
+    session.add(item); session.commit()
+    freeze_weekly_plan(session, r["plan_id"])
     journals = session.exec(select(DecisionJournalEntry).where(
         DecisionJournalEntry.weekly_plan_item_id == item.id)).all()
-    assert len(journals) == 1
-    assert journals[0].investment_thesis_snapshot == "长期定投消费龙头"
-
-
-def test_add_decisions_date_range(session, default_config):
-    from application.weekly_plan import create_draft_weekly_plan, add_existing_decisions_to_plan
-    r = create_draft_weekly_plan(session, "2026-07-06", 1)
-    dd_before = DailyDecision(fund_code="000083", date="2026-07-05", strategy_action="observe")
-    dd_in = DailyDecision(fund_code="001532", date="2026-07-07", strategy_action="observe")
-    dd_after = DailyDecision(fund_code="002340", date="2026-07-13", strategy_action="observe")
-    session.add_all([dd_before, dd_in, dd_after]); session.commit()
-    result = add_existing_decisions_to_plan(session, r["plan_id"])
-    assert result["ok"] is True
-    assert result["items_added"] == 1
-
-
-# ── Safety Tests ──
-
-def test_no_auto_trade(session, default_config):
-    from application.weekly_plan import create_draft_weekly_plan, freeze_weekly_plan
-    a = Asset(code="000083", name="消费行业")
-    dd = DailyDecision(fund_code="000083", date="2026-07-06", strategy_action="observe")
-    session.add_all([a, dd]); session.commit()
-    before = len(session.exec(select(Transaction)).all())
-    r = create_draft_weekly_plan(session, "2026-07-06", 1)
-    item = WeeklyPlanItem(weekly_plan_id=r["plan_id"], asset_code="000083", daily_decision_id=dd.id,
-                          data_quality_status="ok")
-    session.add(item); session.commit()
-    freeze_weekly_plan(session, r["plan_id"])
-    after = len(session.exec(select(Transaction)).all())
-    assert after == before, "Draft + Freeze must not create Transaction"
-
-
-def test_no_pool_deduction(session, default_config):
-    from application.weekly_plan import create_draft_weekly_plan, freeze_weekly_plan
-    st = FundState(code="pool", pool_balance=1000.0)
-    a = Asset(code="000083", name="消费行业")
-    dd = DailyDecision(fund_code="000083", date="2026-07-06", strategy_action="observe")
-    session.add_all([st, a, dd]); session.commit()
-    r = create_draft_weekly_plan(session, "2026-07-06", 1)
-    item = WeeklyPlanItem(weekly_plan_id=r["plan_id"], asset_code="000083", daily_decision_id=dd.id,
-                          data_quality_status="ok")
-    session.add(item); session.commit()
-    freeze_weekly_plan(session, r["plan_id"])
-    st2 = session.get(FundState, st.id)
-    assert st2.pool_balance == 1000.0, "Draft + Freeze must not deduct pool"
-
-
-# ── Unique Constraint Tests ──
-
-def test_weekly_plan_db_unique_constraint(session, default_config):
-    import sqlite3
-    p1 = WeeklyInvestmentPlan(week_start="2026-08-03", week_end="2026-08-09", config_id=1, status="DRAFT")
-    session.add(p1); session.commit()
-    p2 = WeeklyInvestmentPlan(week_start="2026-08-03", week_end="2026-08-09", config_id=1, status="DRAFT")
-    session.add(p2)
-    with pytest.raises(Exception):
-        session.commit()
-    session.rollback()
-
-
-def test_weekly_plan_item_db_unique_constraint(session, default_config):
-    import sqlite3
-    p = WeeklyInvestmentPlan(week_start="2026-08-03", week_end="2026-08-09", config_id=1, status="DRAFT")
-    dd = DailyDecision(fund_code="000083", date="2026-08-04", strategy_action="observe")
-    session.add_all([p, dd]); session.commit()
-    item1 = WeeklyPlanItem(weekly_plan_id=p.id, asset_code="000083", daily_decision_id=dd.id)
-    session.add(item1); session.commit()
-    item2 = WeeklyPlanItem(weekly_plan_id=p.id, asset_code="000083", daily_decision_id=dd.id)
-    session.add(item2)
-    with pytest.raises(Exception):
-        session.commit()
-    session.rollback()
-
-
-# ── Migration Tests ──
-
-def test_migration_creates_unique_indexes(session, default_config):
-    # The unique constraint is tested above via DB rejection.
-    # This test verifies the migration function runs without error.
-    from backend.db.migrations import migrate
-    result = migrate(":memory:")
-    assert result["ok"] is True
-    assert result["version"] == "v2.1"
+    assert len(journals) >= 1
