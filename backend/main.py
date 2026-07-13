@@ -34,6 +34,10 @@ from services.portfolio import (
 from services.holdings import sync_fund_holdings, get_fund_industry_vector
 from collections import defaultdict
 
+# v2.1: Weekly Plan router
+from api.weekly_plan import router as weekly_plan_router
+app.include_router(weekly_plan_router)
+
 
 # === 生命周期：启动时建表 ===
 @asynccontextmanager

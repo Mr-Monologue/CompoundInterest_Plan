@@ -10,6 +10,17 @@ class Asset(SQLModel, table=True):
     name: str
     type: str = "ETF"
     max_weight_limit: float = Field(default=0.2)
+    # v2.1: Product Core fields
+    role: str = "core"
+    proxy_code: Optional[str] = None
+    proxy_type: str = "INDEX"
+    theme: str = ""
+    target_weight: float = 0.0
+    investment_thesis: str = ""
+    expected_holding_months: int = 12
+    review_cycle: str = "quarterly"
+    invalidation_conditions: str = ""
+    enabled: bool = True
 
 
 # 2. 交易表
@@ -298,3 +309,69 @@ class DataQualityIssue(SQLModel, table=True):
     first_seen_at: datetime = Field(default_factory=datetime.now)
     last_seen_at: datetime = Field(default_factory=datetime.now)
     resolved_at: Optional[datetime] = None
+
+
+# v2.1: Weekly Plan models
+
+class InvestmentPlanConfig(SQLModel, table=True):
+    __tablename__ = "investment_plan_config"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = "default"
+    weekly_budget: float = 200.0
+    core_target_ratio: float = 0.65
+    satellite_target_ratio: float = 0.35
+    reserve_balance: float = 0.0
+    strategy_version: str = "v2.1"
+    enabled: bool = True
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class WeeklyInvestmentPlan(SQLModel, table=True):
+    __tablename__ = "weekly_investment_plan"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    week_start: str = ""
+    week_end: str = ""
+    config_id: int = 0
+    strategy_version: str = "v2.1"
+    status: str = "DRAFT"
+    available_budget: float = 0.0
+    core_budget: float = 0.0
+    satellite_budget: float = 0.0
+    data_quality_status: str = "unknown"
+    exposure_status: str = "unknown"
+    created_at: datetime = Field(default_factory=datetime.now)
+    frozen_at: Optional[datetime] = None
+
+
+class WeeklyPlanItem(SQLModel, table=True):
+    __tablename__ = "weekly_plan_item"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    weekly_plan_id: int = 0
+    asset_code: str = ""
+    asset_role: str = "core"
+    daily_decision_id: Optional[int] = None
+    fixed_amount: Optional[float] = None
+    dynamic_amount: Optional[float] = None
+    candidate_amount: Optional[float] = None
+    final_amount: Optional[float] = None
+    action: str = "NO_ACTION"
+    valuation_state: str = "unknown"
+    risk_status: str = "ok"
+    data_quality_status: str = "unknown"
+    reason_summary: str = ""
+    calculation_trace: str = "{}"
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class DecisionJournalEntry(SQLModel, table=True):
+    __tablename__ = "decision_journal_entry"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    weekly_plan_item_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    investment_thesis_snapshot: str = ""
+    expected_scenario: str = ""
+    invalidation_conditions: str = ""
+    known_unknowns: str = ""
+    user_note: str = ""
+    immutable: bool = True
