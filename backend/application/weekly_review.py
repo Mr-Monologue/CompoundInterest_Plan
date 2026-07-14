@@ -31,7 +31,6 @@ def generate_weekly_review(session: Session, weekly_plan_id: int, rebuild: bool 
                                    period_end=plan.week_end, strategy_version=plan.strategy_version, status="DRAFT")
     rev.generated_at = datetime.now()
     rev.item_count = 0
-
     plan_items = session.exec(select(WeeklyPlanItem).where(
         WeeklyPlanItem.weekly_plan_id == weekly_plan_id)).all()
 
@@ -50,7 +49,8 @@ def generate_weekly_review(session: Session, weekly_plan_id: int, rebuild: bool 
 
     total_planned = Decimal("0"); total_approved = Decimal("0"); total_actual = Decimal("0")
     total_matched = Decimal("0"); total_unexecuted = Decimal("0")
-    total_app_var = Decimal("0"); total_exec_var = Decimal("0"); total_plan_exec_var = Decimal("0")
+    total_app_var = Decimal("0"); total_exec_var = Decimal("0")
+    total_exec_var_none = False; total_plan_exec_var = Decimal("0")
 
     for pi in plan_items:
         decision = session.exec(select(PlanItemUserDecision).where(
@@ -70,8 +70,9 @@ def generate_weekly_review(session: Session, weekly_plan_id: int, rebuild: bool 
 
         # Determine category
         is_blocked = (pi.action in ("BLOCKED", "REVIEW_REQUIRED") or
-                      pi.data_quality_status not in ("PASS", "WARNING", "unknown") or
-                      pi.exposure_status in ("BLOCKED", "REVIEW_REQUIRED", "GUARD_ERROR"))
+                      pi.data_quality_status not in ("PASS", "WARNING") or
+                      pi.exposure_status in ("BLOCKED", "REVIEW_REQUIRED", "GUARD_ERROR") or
+                      (pi.risk_status or "").upper() in ("BLOCKED", "FAILED"))
 
         if is_blocked:
             category = "BLOCKED"; count["blocked"] += 1
@@ -140,14 +141,15 @@ def generate_weekly_review(session: Session, weekly_plan_id: int, rebuild: bool 
     rev.actual_total = float(total_actual); rev.matched_total = float(total_matched)
     rev.unexecuted_total = float(total_unexecuted)
     rev.approval_variance_total = float(total_app_var) if total_app_var else None
-    rev.execution_variance_total = float(total_exec_var) if total_exec_var else None
+    rev.execution_variance_total = 0.0 if total_exec_var_none else float(total_exec_var)
     rev.plan_execution_variance_total = float(total_plan_exec_var) if total_plan_exec_var else None
     rev.approved_count = count["approved"]; rev.executed_count = count["executed"]
     rev.matched_count = count["matched"]; rev.mismatch_count = count["mismatch"]
     rev.skipped_count = count["skipped"]; rev.deferred_count = count["deferred"]
     rev.cancelled_count = count["cancelled"]; rev.blocked_count = count["blocked"]
     rev.undecided_count = count["undecided"]
-    rev.status = "READY_FOR_USER" if (count["undecided"] == 0 and count["mismatch"] <= 0) else "INCOMPLETE"
+    has_pending_action = (count["approved"] > count["executed"]) or count["undecided"] > 0 or count["mismatch"] > 0
+    rev.status = "INCOMPLETE" if has_pending_action else "READY_FOR_USER"
 
     # Deterministic FollowUpActions
     if existing and rebuild:
@@ -176,6 +178,7 @@ def generate_weekly_review(session: Session, weekly_plan_id: int, rebuild: bool 
                                        action_type="USER_CLARIFICATION", description=f"{ri.asset_code} skipped without reason",
                                        owner="USER"))
 
+        rev.item_count = len(plan_items)
     session.commit()
     items = session.exec(select(WeeklyReviewItem).where(
         WeeklyReviewItem.weekly_review_id == rev.id)).all()

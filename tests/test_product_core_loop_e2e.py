@@ -1,8 +1,9 @@
+import sys; sys.path.insert(0, 'backend')
 """v2.1 Product Core Loop E2E — 6 scenario test (fixed)."""
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select, StaticPool
 from db.models import (Asset, InvestmentPlanConfig, WeeklyInvestmentPlan, WeeklyPlanItem,
-                       Transaction, PlanState)
+                       Transaction, PlanState, MarketSnapshot)
 from application.models_reconciliation import (PlanItemUserDecision, ExecutionRecord, ReconciliationRecord)
 from application.models_review import WeeklyReview, WeeklyReviewItem, FollowUpAction
 
@@ -50,8 +51,12 @@ def setup_e2e(session):
         session.add(Asset(code=code, name=code, role=role, enabled=True, investment_thesis=f"{code} thesis",
                           invalidation_conditions="none"))
         session.add(fake_mkt(code))
-    session.add(MarketSnapshot(asset_code="SAT_D", data_date="2026-08-03", is_trusted=False,
-                               quality_status="SOURCE_ERROR"))
+    # SAT_D already added above with is_trusted=True — UPDATE it
+    mkt_sat_d = session.exec(select(MarketSnapshot).where(
+        MarketSnapshot.asset_code == "SAT_D")).first()
+    if mkt_sat_d:
+        mkt_sat_d.is_trusted = False
+        mkt_sat_d.quality_status = "SOURCE_ERROR"
     session.commit()
     from application.weekly_plan import build_weekly_investment_plan
     adapters = {"value_dca": fake_dca, "valuation": fake_val, "exposure_guard": fake_guard}

@@ -1,3 +1,4 @@
+import sys; sys.path.insert(0, 'backend')
 """v2.1 User Confirmation — real tests."""
 import pytest
 from decimal import Decimal

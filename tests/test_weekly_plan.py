@@ -1,3 +1,4 @@
+import sys; sys.path.insert(0, 'backend')
 """v2.1 Weekly Plan — production tests."""
 import pytest
 from decimal import Decimal
@@ -227,11 +228,11 @@ def test_latest_snapshot_before_week_end(session, default_config):
         MarketSnapshot(asset_code="TEST", data_date="2026-08-01", is_trusted=True, proxy_close=1.0, proxy_ma200=0.9),
         MarketSnapshot(asset_code="TEST", data_date="2026-08-03", is_trusted=True, proxy_close=1.05, proxy_ma200=0.9),
     ])
-    session.add(Asset(code="TEST", role="core", enabled=True))
+    session.add(Asset(code="TEST2", name="Test2", role="core", enabled=True))
     session.commit()
     from application.weekly_plan import build_weekly_investment_plan
     r = build_weekly_investment_plan(session, "2026-08-04", 1,
                                      adapters={"value_dca": fake_dca, "valuation": fake_val, "exposure_guard": fake_guard})
     assert r["ok"] is True
-    items = [i for i in r["items"] if i["asset_code"] == "TEST"]
+    items = [i for i in r["items"] if i["asset_code"] == "TEST2"]
     assert len(items) > 0

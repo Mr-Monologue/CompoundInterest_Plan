@@ -1,3 +1,4 @@
+import sys; sys.path.insert(0, 'backend')
 """v2.1 Weekly Review — fixed tests."""
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select, StaticPool
@@ -59,7 +60,7 @@ def test_review_category_matched(session, review_setup):
 def test_approved_not_executed_incomplete(session, review_setup):
     plan, _ = review_setup
     er = session.exec(select(ExecutionRecord)).first()
-    er.execution_status = "PENDING"; session.commit()
+    er.execution_status = "PENDING"; er.actual_amount = None; session.commit()
     from application.weekly_review import generate_weekly_review
     r = generate_weekly_review(session, plan.id)
     assert r["status"] == "INCOMPLETE"
