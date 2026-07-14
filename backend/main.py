@@ -34,6 +34,9 @@ from services.portfolio import (
 from services.holdings import sync_fund_holdings, get_fund_industry_vector
 from collections import defaultdict
 
+# v2.1: Weekly Plan router — imported for later registration
+from api.weekly_plan import router as weekly_plan_router
+
 
 # === 生命周期：启动时建表 ===
 @asynccontextmanager
@@ -44,6 +47,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# v2.1: Register Weekly Plan router
+app.include_router(weekly_plan_router)
+
+# v2.1: User Confirmation router
+from api.user_confirmation import router as user_confirmation_router
+app.include_router(user_confirmation_router)
+
+# v2.1: Weekly Review router
+from api.weekly_review import router as weekly_review_router
+app.include_router(weekly_review_router)
 
 # v1.0.1: AI Exposure Analyst router
 from api.exposure import router as exposure_router

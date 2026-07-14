@@ -1,5 +1,6 @@
 from typing import Optional
 from sqlmodel import Field, SQLModel
+from sqlalchemy import UniqueConstraint
 from datetime import datetime
 
 
@@ -10,6 +11,37 @@ class Asset(SQLModel, table=True):
     name: str
     type: str = "ETF"
     max_weight_limit: float = Field(default=0.2)
+    # v2.1: Product Core fields
+    role: str = "core"
+    proxy_code: Optional[str] = None
+    proxy_type: str = "INDEX"
+    theme: str = ""
+    target_weight: float = 0.0
+    investment_thesis: str = ""
+    expected_holding_months: int = 12
+    review_cycle: str = "quarterly"
+    invalidation_conditions: str = ""
+    enabled: bool = True
+
+
+# v2.1: MarketSnapshot — nav, proxy, MA200 (separate from FundHoldingSnapshot)
+class MarketSnapshot(SQLModel, table=True):
+    __tablename__ = "market_snapshot"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    asset_code: str = Field(index=True)
+    data_date: str = ""
+    # __table_args__ ensures one snapshot per asset per day
+    __table_args__ = (UniqueConstraint("asset_code", "data_date", name="uq_market_snapshot_date"),)
+    nav: Optional[float] = None
+    nav_source: str = ""
+    proxy_code: str = ""
+    proxy_close: Optional[float] = None
+    proxy_ma200: Optional[float] = None
+    dev_pct: Optional[float] = None
+    market_source: str = ""
+    is_trusted: bool = True
+    quality_status: str = "PASS"
+    fetched_at: datetime = Field(default_factory=datetime.now)
 
 
 # 2. 交易表
@@ -22,6 +54,8 @@ class Transaction(SQLModel, table=True):
     amount: float
     fee: float = 0.0
     units: float
+    # v2.1: link to ReconciliationRecord for audit trail
+    source_execution_id: Optional[int] = None
 
 
 # 3. FundState
@@ -298,3 +332,103 @@ class DataQualityIssue(SQLModel, table=True):
     first_seen_at: datetime = Field(default_factory=datetime.now)
     last_seen_at: datetime = Field(default_factory=datetime.now)
     resolved_at: Optional[datetime] = None
+
+
+# v2.1: Weekly Plan models
+
+class InvestmentPlanConfig(SQLModel, table=True):
+    __tablename__ = "investment_plan_config"
+    __table_args__ = {"extend_existing": True}
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = "default"
+    weekly_budget: float = 200.0
+    core_target_ratio: float = 0.65
+    satellite_target_ratio: float = 0.35
+    reserve_balance: float = 0.0
+    strategy_version: str = "v2.1"
+    enabled: bool = True
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class WeeklyInvestmentPlan(SQLModel, table=True):
+    __tablename__ = "weekly_investment_plan"
+    __table_args__ = (UniqueConstraint("week_start", "config_id", name="uq_weekly_plan_week_config"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    week_start: str = ""
+    week_end: str = ""
+    config_id: int = 0
+    strategy_version: str = "v2.1"
+    status: str = "DRAFT"
+    available_budget: float = 0.0
+    core_budget: float = 0.0
+    satellite_budget: float = 0.0
+    total_candidate_amount: float = 0.0
+    total_final_amount: float = 0.0
+    unallocated_core_budget: float = 0.0
+    unallocated_satellite_budget: float = 0.0
+    blocked_item_count: int = 0
+    review_required_item_count: int = 0
+    data_quality_status: str = "unknown"
+    exposure_status: str = "unknown"
+    created_at: datetime = Field(default_factory=datetime.now)
+    frozen_at: Optional[datetime] = None
+
+
+class WeeklyPlanItem(SQLModel, table=True):
+    __tablename__ = "weekly_plan_item"
+    __table_args__ = (UniqueConstraint("weekly_plan_id", "daily_decision_id", name="uq_weekly_plan_decision"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    weekly_plan_id: int = 0
+    asset_code: str = ""
+    asset_role: str = "core"
+    daily_decision_id: Optional[int] = None
+    fixed_amount: Optional[float] = None
+    dynamic_amount: Optional[float] = None
+    candidate_amount: Optional[float] = None
+    final_amount: Optional[float] = None
+    action: str = "NO_ACTION"
+    valuation_state: str = "unknown"
+    risk_status: str = "ok"
+    data_quality_status: str = "unknown"
+    reason_summary: str = ""
+    calculation_trace: str = "{}"
+    created_at: datetime = Field(default_factory=datetime.now)
+    # v2.1: Full audit persistence
+    market_snapshot_id: Optional[int] = None
+    market_data_date: str = ""
+    data_source: str = ""
+    proxy_code: str = ""
+    dev_pct: Optional[float] = None
+    allocated_fixed: Optional[float] = None
+    allocated_dynamic: Optional[float] = None
+    exposure_status: str = "unknown"
+    exposure_reasons: str = ""
+    strategy_version: str = ""
+
+
+class DecisionJournalEntry(SQLModel, table=True):
+    __tablename__ = "decision_journal_entry"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    weekly_plan_item_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    investment_thesis_snapshot: str = ""
+    expected_scenario: str = ""
+    invalidation_conditions: str = ""
+    known_unknowns: str = ""
+    user_note: str = ""
+    immutable: bool = True
+    # v2.1: Frozen evidence fields
+    strategy_version: str = ""
+    market_data_date: str = ""
+    data_source: str = ""
+    proxy_code: str = ""
+    valuation_state: str = ""
+    fixed_amount: Optional[float] = None
+    dynamic_amount: Optional[float] = None
+    candidate_amount: Optional[float] = None
+    final_amount: Optional[float] = None
+    risk_status: str = ""
+    exposure_status: str = ""
+    calculation_trace: str = ""
+    evidence_json: str = "{}"
