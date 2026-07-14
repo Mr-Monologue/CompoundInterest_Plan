@@ -11,6 +11,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 import uvicorn
 from contextlib import asynccontextmanager
@@ -47,6 +48,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Static frontend serving (must be BEFORE any route handlers)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DIST_DIR = os.path.join(BASE_DIR, "dist")
+ASSETS_DIR = os.path.join(DIST_DIR, "assets")
+
+# Static files served via catchall route
 
 # v2.1: Register Weekly Plan router
 app.include_router(weekly_plan_router)
@@ -510,12 +518,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, "dist")
 ASSETS_DIR = os.path.join(DIST_DIR, "assets")
 
-# 2. 挂载静态资源 (CSS/JS/Images)
-# 这些文件通常在 /assets 路径下
-if os.path.exists(ASSETS_DIR):
-    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+# Static frontend: ASSETS_DIR used by catchall route
 
 
+# ── Health check ──────────────────────────────
 
 # ── Health check ──────────────────────────────
 
@@ -992,11 +998,17 @@ def dq_ignore(issue_id: int, data: dict, session: Session = Depends(get_session)
 # 注意：这个函数必须放在所有 @app.get("/api/...") 之后！
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
-    # 如果是 API 请求但没匹配到上面的接口，返回 404
+    # If it's an API request, return 404
     if full_path.startswith("api/"):
         return {"error": "API endpoint not found"}
 
-    # 否则，一律返回 index.html (让 React 路由去处理页面跳转)
+    # Serve actual static files from dist/
+    if full_path.startswith("assets/"):
+        static_file = os.path.join(DIST_DIR, full_path)
+        if os.path.isfile(static_file):
+            return FileResponse(static_file)
+
+    # Otherwise, return index.html for SPA routing
     index_file = os.path.join(DIST_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
@@ -1052,6 +1064,18 @@ def portfolio_exposure(session: Session = Depends(get_session)):
         tb = a.theme_bucket or '未分类'
         themes[tb] = themes.get(tb,0) + 1
     return {'ok':True,'theme_exposure':themes}
+
+
+
+
+
+# Frontend: serve index.html at root
+@app.get("/")
+async def serve_root():
+    index_path = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"error": "frontend not built. Run: cd frontend && npm run build"}
 
 
 if __name__ == "__main__":
