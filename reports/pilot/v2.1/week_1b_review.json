@@ -1,0 +1,49 @@
+{
+  "week": "1B",
+  "timestamp": "2026-07-14T17:00:00+08:00",
+  "status": "PARTIAL_PASS",
+  "safety_path_status": "PASS",
+  "real_data_status": "BLOCKED",
+  "overall_status": "PARTIAL_PASS",
+  "ready_for_week_2": false,
+  "assets": 6,
+  "plan": {
+    "status": "DRAFT",
+    "total_candidate": 0,
+    "total_final": 0,
+    "transaction_count": {"before": 7, "after": 7, "unchanged": true}
+  },
+  "fixes": [
+    "Asset proxy_code populated (6/6)",
+    "SOURCE_ERROR items preserve asset_role, proxy_code, data_source, reason_summary",
+    "Pipeline: error item factory accepts reason parameter",
+    "AKShare installed (network blocked in sandbox)"
+  ],
+  "observations": [
+    "All 6 assets have correct role, proxy, data_source, and explicit reason",
+    "AKShare installed but network unavailable in sandbox",
+    "Transaction count unchanged (7→7) — no auto-trade",
+    "No mock advice, no pool deduction"
+  ],
+  "incidents": [
+    {
+      "id": "W1B-001",
+      "type": "PILOT_ASSET_SCOPE_MISMATCH",
+      "status": "RESOLVED",
+      "detail": "Fixed pipeline to propagate Asset metadata to SOURCE_ERROR items"
+    },
+    {
+      "id": "W1B-002",
+      "type": "PLAN_ASSET_METADATA_INCOMPLETE",
+      "status": "RESOLVED",
+      "detail": "Now preserves role, proxy_code, data_source, reason_summary"
+    },
+    {
+      "id": "W1B-003",
+      "type": "REAL_DATA_NOT_AVAILABLE",
+      "status": "KNOWN",
+      "detail": "AKShare network blocked in sandbox. Requires local machine with network access."
+    }
+  ],
+  "failed_invariants": ["REAL_MARKET_DATA_NOT_VALIDATED"]
+}

@@ -118,9 +118,17 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
 
             for asset in assets:
                 mkt = markets.get(asset.code)
+                # Pre-compute asset metadata for error items
+                am = {
+                    "asset_role": getattr(asset, "role", "core"),
+                    "proxy_code": getattr(asset, "proxy_code", "") or "",
+                    "investment_thesis": getattr(asset, "investment_thesis", "")[:200],
+                    "invalidation_conditions": getattr(asset, "invalidation_conditions", "")[:200],
+                }
                 if not mkt:
                     errors.append({"asset": asset.code, "error": "NO_MARKET_DATA"})
-                    item = _make_error_item(asset, "SOURCE_ERROR")
+                    item = _make_error_item(asset, "SOURCE_ERROR", "NO_MARKET_DATA — attempted data provider unavailable")
+                    item.update(am)
                     _categorize(item, core_items, satellite_items, asset.role)
                     continue
 
@@ -196,6 +204,9 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
                 mkt = markets.get(it["asset_code"])
                 item = WeeklyPlanItem(weekly_plan_id=existing.id, asset_code=it["asset_code"],
                                       asset_role=it["asset_role"],
+                                      proxy_code=it.get("proxy_code", "") or "",
+                                      data_source=it.get("data_source", "") or "",
+                                      reason_summary=it.get("reason_summary", it.get("calculation_trace", ""))[:200],
                                       fixed_amount=it.get("fixed_amount"),
                                       dynamic_amount=it.get("dynamic_amount"),
                                       candidate_amount=it.get("candidate_amount"),
@@ -205,12 +216,9 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
                                       risk_status=it.get("risk_status", "ok"),
                                       data_quality_status=it.get("data_quality_status", "unknown"),
                                       calculation_trace=str(it.get("calculation_trace", "{}")),
-                                      reason_summary=it.get("exposure_reasons", ""),
                                       # Audit persistence
                                       market_snapshot_id=mkt.id if mkt else None,
                                       market_data_date=str(getattr(mkt, "data_date", "")),
-                                      data_source=str(getattr(mkt, "market_source", "")),
-                                      proxy_code=str(getattr(mkt, "proxy_code", "")),
                                       dev_pct=float(getattr(mkt, "dev_pct", 0) or 0) if mkt else None,
                                       allocated_fixed=it.get("allocated_fixed"),
                                       allocated_dynamic=it.get("allocated_dynamic"),
@@ -259,11 +267,15 @@ def _categorize(item, core_items, satellite_items, role):
         core_items.append(item)
 
 
-def _make_error_item(asset, dq_status):
-    return {"asset_code": asset.code, "asset_role": asset.role, "candidate_action": "REVIEW_REQUIRED",
+def _make_error_item(asset, dq_status, reason=""):
+    return {"asset_code": asset.code, "asset_role": getattr(asset, "role", "core"),
+            "proxy_code": getattr(asset, "proxy_code", "") or "",
+            "candidate_action": "REVIEW_REQUIRED",
             "fixed_amount": None, "dynamic_amount": None, "candidate_amount": None,
             "valuation_state": "unknown", "data_quality_status": dq_status,
-            "calculation_trace": "NO_MARKET_DATA", "risk_status": "FAILED"}
+            "risk_status": "FAILED",
+            "calculation_trace": f"ERROR:{reason}", "reason_summary": reason,
+            "data_source": "akshare.attempted"}
 
 
 # ═══════════════════════════════════════════════════════════════

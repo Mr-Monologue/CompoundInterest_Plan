@@ -10,7 +10,11 @@
     "blocked_items": 6,
     "source_error_count": 6,
     "total_final": 0,
-    "transaction_count": {"before": 7, "after": 7, "unchanged": true}
+    "transaction_count": {
+      "before": 7,
+      "after": 7,
+      "unchanged": true
+    }
   },
   "observations": [
     "All 6 assets correctly classified as SOURCE_ERROR — no market data available",
@@ -20,6 +24,14 @@
     "Zero mock advice generated"
   ],
   "blocking_issues": [],
-  "ready_for_week_2": true,
-  "note": "Week 1 PASS with credible block. Real data required for Week 2 execution."
+  "ready_for_week_2": false,
+  "note": "Week 1 PASS with credible block. Real data required for Week 2 execution.",
+  "safety_path_status": "PASS",
+  "real_data_status": "BLOCKED",
+  "overall_status": "PARTIAL_PASS",
+  "failed_invariants": [
+    "REAL_MARKET_DATA_NOT_VALIDATED",
+    "PILOT_ASSET_SCOPE_MISMATCH",
+    "PLAN_ASSET_METADATA_INCOMPLETE"
+  ]
 }
