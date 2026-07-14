@@ -71,10 +71,49 @@ def migrate(db_path: str) -> dict:
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
     existing_tables = {row[0] for row in cursor.fetchall()}
     created_tables = []
+    migration_errors = []
+    # Sync existing tables with missing columns
+    sync_columns = {
+        "weekly_plan_item": [
+            ("market_snapshot_id", "INTEGER"), ("market_data_date", "TEXT DEFAULT ''"),
+            ("data_source", "TEXT DEFAULT ''"), ("proxy_code", "TEXT DEFAULT ''"),
+            ("dev_pct", "REAL"), ("allocated_fixed", "REAL"), ("allocated_dynamic", "REAL"),
+            ("exposure_status", "TEXT DEFAULT 'unknown'"), ("exposure_reasons", "TEXT DEFAULT ''"),
+            ("strategy_version", "TEXT DEFAULT ''"),
+        ],
+        "weekly_investment_plan": [
+            ("total_candidate_amount", "REAL DEFAULT 0.0"), ("total_final_amount", "REAL DEFAULT 0.0"),
+            ("unallocated_core_budget", "REAL DEFAULT 0.0"), ("unallocated_satellite_budget", "REAL DEFAULT 0.0"),
+            ("blocked_item_count", "INTEGER DEFAULT 0"), ("review_required_item_count", "INTEGER DEFAULT 0"),
+        ],
+        "decision_journal_entry": [
+            ("strategy_version", "TEXT DEFAULT ''"), ("market_data_date", "TEXT DEFAULT ''"),
+            ("data_source", "TEXT DEFAULT ''"), ("proxy_code", "TEXT DEFAULT ''"),
+            ("valuation_state", "TEXT DEFAULT ''"), ("fixed_amount", "REAL"),
+            ("dynamic_amount", "REAL"), ("candidate_amount", "REAL"), ("final_amount", "REAL"),
+            ("risk_status", "TEXT DEFAULT ''"), ("exposure_status", "TEXT DEFAULT ''"),
+            ("calculation_trace", "TEXT DEFAULT ''"), ("evidence_json", "TEXT DEFAULT '{}'"),
+        ],
+    }
+    for table_name, columns in sync_columns.items():
+        if table_name in existing_tables:
+            try:
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                existing = {row[1] for row in cursor.fetchall()}
+                for col_name, col_type in columns:
+                    if col_name not in existing:
+                        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
+            except Exception as e:
+                migration_errors.append({"table": table_name, "error": str(e)[:200]})
+
     for name, sql in NEW_TABLES.items():
         if name not in existing_tables:
-            cursor.execute(sql)
-            created_tables.append(name)
+            try:
+                cursor.execute(sql)
+                created_tables.append(name)
+            except Exception as e:
+                migration_errors.append({"table": name, "error": str(e)[:200]})
+    
 
     # Indexes
     created_indexes = []
@@ -82,8 +121,8 @@ def migrate(db_path: str) -> dict:
         try:
             cursor.execute(sql)
             created_indexes.append(name)
-        except Exception:
-            pass
+        except Exception as e:
+            migration_errors.append({"index": name, "error": str(e)[:200]})
 
     # Default config
     cursor.execute("SELECT COUNT(*) FROM investment_plan_config")
@@ -102,7 +141,8 @@ def migrate(db_path: str) -> dict:
             "tables_created": created_tables, "indexes_created": created_indexes,
             "asset_count_preserved": asset_before == asset_after,
             "transaction_count_preserved": txn_before == txn_after,
-            "idempotent": bool(asset_before == asset_after and txn_before == txn_after)}
+            "idempotent": bool(asset_before == asset_after and txn_before == txn_after and not migration_errors),
+            "migration_errors": migration_errors}
 
 
 if __name__ == "__main__":
