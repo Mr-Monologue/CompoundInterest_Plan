@@ -1,0 +1,12 @@
+{
+  "week": 2,
+  "timestamp": "2026-07-14T18:01:31.524214",
+  "week_start": "2026-07-13",
+  "week_end": "2026-07-19",
+  "transaction_count": 7,
+  "plan_item_user_decision_count": 0,
+  "execution_record_count": 0,
+  "reconciliation_record_count": 0,
+  "pool_balance": 800.0,
+  "sha256": "3c8bd1eba465b4e6d9da485b5df0828b109e4f86e2e39861e8370cabe6ed67c2"
+}
