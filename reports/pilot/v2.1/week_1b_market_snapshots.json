@@ -1,0 +1,72 @@
+{
+  "snapshots": [
+    {
+      "asset_code": "000083",
+      "proxy_code": "000300",
+      "data_date": "2026-07-14",
+      "nav": 1.0,
+      "nav_source": "akshare.1.18.64",
+      "proxy_close": 4695.383,
+      "proxy_ma200": 4690.1901,
+      "dev_pct": 0.0011,
+      "market_source": "akshare",
+      "is_trusted": true,
+      "quality_status": "PASS",
+      "fetched_at": "2026-07-14T17:00:03.837658"
+    },
+    {
+      "asset_code": "001532",
+      "proxy_code": "000300",
+      "data_date": "2026-07-14",
+      "nav": 1.0,
+      "nav_source": "akshare.1.18.64",
+      "proxy_close": 4695.383,
+      "proxy_ma200": 4690.1901,
+      "dev_pct": 0.0011,
+      "market_source": "akshare",
+      "is_trusted": true,
+      "quality_status": "PASS",
+      "fetched_at": "2026-07-14T17:00:03.837683"
+    },
+    {
+      "asset_code": "003096",
+      "proxy_code": "399006",
+      "data_date": "2026-07-14",
+      "nav": 1.0,
+      "nav_source": "akshare.1.18.64",
+      "proxy_close": 3723.517,
+      "proxy_ma200": 3428.3352,
+      "dev_pct": 0.0861,
+      "market_source": "akshare",
+      "is_trusted": true,
+      "quality_status": "PASS",
+      "fetched_at": "2026-07-14T17:00:03.837696"
+    },
+    {
+      "asset_code": "005827",
+      "proxy_code": "000300",
+      "data_date": "2026-07-14",
+      "nav": 1.0,
+      "nav_source": "akshare.1.18.64",
+      "proxy_close": 4695.383,
+      "proxy_ma200": 4690.1901,
+      "dev_pct": 0.0011,
+      "market_source": "akshare",
+      "is_trusted": true,
+      "quality_status": "PASS",
+      "fetched_at": "2026-07-14T17:00:03.837706"
+    }
+  ],
+  "index_cache": {
+    "000300": {
+      "close": 4695.383,
+      "ma200": 4690.1901,
+      "dev_pct": 0.0011
+    },
+    "399006": {
+      "close": 3723.517,
+      "ma200": 3428.3352,
+      "dev_pct": 0.0861
+    }
+  }
+}

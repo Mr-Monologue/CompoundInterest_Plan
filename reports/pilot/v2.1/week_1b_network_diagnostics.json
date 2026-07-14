@@ -1,0 +1,32 @@
+{
+  "phase": "B",
+  "runtime": {
+    "project_python": "F:\\compound-interest-plan\\.venv\\Scripts\\python.exe",
+    "version": "3.14.4",
+    "pydantic_core_path": "F:\\compound-interest-plan\\.venv\\Lib\\site-packages\\pydantic_core\\__init__.py",
+    "pydantic_core_ok": true
+  },
+  "dns": {
+    "akshare.akfamily.xyz": "OK",
+    "push2.eastmoney.com": "OK",
+    "baidu.com": "OK"
+  },
+  "tcp": {
+    "push2.eastmoney.com": "CONNECTED"
+  },
+  "provider": [
+    {
+      "capability": "FUND_NAV",
+      "provider": "akshare",
+      "success": false,
+      "error": "module 'akshare' has no attribute 'fund_nav'"
+    },
+    {
+      "capability": "INDEX_HISTORY",
+      "provider": "akshare",
+      "success": true,
+      "rows": 5947
+    }
+  ],
+  "network_available": true
+}
