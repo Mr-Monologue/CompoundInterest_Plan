@@ -227,3 +227,44 @@ def reconcile_execution(session: Session, execution_id: int, data: dict) -> dict
     session.commit()
     return {"ok": True, "reconciliation_id": rec.id, "status": rec.reconciliation_status,
             "variance": float(plan_execution_variance), "transaction_id": getattr(rec, 'transaction_id', None)}
+
+
+def get_decision(session, item_id):
+    """Get decision for a plan item."""
+    decision = session.exec(select(PlanItemUserDecision).where(
+        PlanItemUserDecision.weekly_plan_item_id == item_id)).first()
+    if not decision:
+        return {"ok": False, "error": "NOT_FOUND"}
+    return {"ok": True, "decision": {k: v for k, v in decision.__dict__.items() if not k.startswith("_")}}
+
+
+def get_execution(session, item_id):
+    """Get execution record for a plan item."""
+    er = session.exec(select(ExecutionRecord).where(
+        ExecutionRecord.weekly_plan_item_id == item_id)).first()
+    if not er:
+        return {"ok": False, "error": "NOT_FOUND"}
+    return {"ok": True, "execution": {k: v for k, v in er.__dict__.items() if not k.startswith("_")}}
+
+
+def get_execution_summary(session, plan_id):
+    """Get execution summary for a weekly plan."""
+    items = session.exec(select(WeeklyPlanItem).where(
+        WeeklyPlanItem.weekly_plan_id == plan_id)).all()
+    summary = []
+    for item in items:
+        dec = session.exec(select(PlanItemUserDecision).where(
+            PlanItemUserDecision.weekly_plan_item_id == item.id)).first()
+        er = session.exec(select(ExecutionRecord).where(
+            ExecutionRecord.weekly_plan_item_id == item.id)).first()
+        rec = session.exec(select(ReconciliationRecord).where(
+            ReconciliationRecord.execution_record_id == er.id)).first() if er else None
+        summary.append({
+            "asset_code": item.asset_code, "planned": item.final_amount,
+            "decision": dec.user_action if dec else None,
+            "approved": dec.approved_amount if dec else None,
+            "executed": er.execution_status if er else None,
+            "actual": er.actual_amount if er else None,
+            "reconciled": rec.reconciliation_status if rec else None,
+        })
+    return {"ok": True, "items": summary}
