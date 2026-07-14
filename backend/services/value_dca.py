@@ -202,3 +202,39 @@ def build_framework_response(report: DecisionReport) -> dict:
         "review_required": report.review_required,
         "review_reason": report.review_reason,
     }
+
+
+# v2.1: Authoritative Value-DCA entry point for Weekly Plan Pipeline
+def calculate_dca_for_fund(asset_code, proxy_close, proxy_ma200, valuation_level="fair",
+                           weekly_budget=200, fixed_ratio=0.65, reserve_balance=0.0):
+    """Pure function. Returns {fixed_amount, dynamic_amount, action, status}.
+    Never uses LLM. All parameters explicit.
+    Overvalued assets get zero dynamic amount."""
+    if proxy_ma200 is None or proxy_ma200 == 0:
+        return None  # caller handles: VALUE_DCA_NO_MARKET_DATA
+
+    dev_pct = (proxy_close - proxy_ma200) / proxy_ma200
+
+    # Fixed: budget × fixed_ratio split evenly across core assets
+    core_budget = weekly_budget * fixed_ratio
+    fixed_amount = round(core_budget / max(1, 2), 2)  # ~2 core assets
+
+    # Dynamic: boost for undervalued, zero for overvalued
+    if valuation_level == "expensive" or dev_pct > 0.05:
+        dynamic_amount = 0
+        action = "fixed_dca"
+    elif dev_pct < -0.10:
+        dynamic_amount = round(fixed_amount * 1.25, 2)
+        action = "dynamic_dca"
+    else:
+        dynamic_amount = round(fixed_amount * 0.25, 2)
+        action = "dynamic_dca"
+
+    return {
+        "fixed_amount": fixed_amount,
+        "dynamic_amount": dynamic_amount,
+        "candidate_amount": fixed_amount + dynamic_amount,
+        "action": action,
+        "status": "PASS",
+        "dev_pct": round(dev_pct, 4),
+    }

@@ -341,13 +341,12 @@ def freeze_weekly_plan(session, plan_id):
             valuation_state=item.valuation_state or "",
             fixed_amount=item.fixed_amount, dynamic_amount=item.dynamic_amount,
             candidate_amount=item.candidate_amount, final_amount=item.final_amount,
-            risk_status=item.risk_status or "", exposure_status="",
+            risk_status=item.risk_status or "", exposure_status=item.exposure_status or "unknown",
             calculation_trace=item.calculation_trace or "",
             evidence_json=str({"asset_code": item.asset_code, "action": item.action}),
             market_data_date=item.market_data_date or "",
             data_source=item.data_source or "",
             proxy_code=item.proxy_code or "",
-            exposure_status=item.exposure_status or "unknown",
         )
         session.add(journal); journals += 1
     session.commit()
