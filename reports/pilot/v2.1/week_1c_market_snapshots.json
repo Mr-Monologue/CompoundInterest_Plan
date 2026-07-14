@@ -1,0 +1,50 @@
+{
+  "funds": {
+    "000083": {
+      "nav": null,
+      "error": "float() argument must be a string or a real number, not 'datetime.date'"
+    },
+    "001532": {
+      "nav": null,
+      "error": "float() argument must be a string or a real number, not 'datetime.date'"
+    },
+    "003096": {
+      "nav": null,
+      "error": "float() argument must be a string or a real number, not 'datetime.date'"
+    },
+    "005827": {
+      "nav": null,
+      "error": "float() argument must be a string or a real number, not 'datetime.date'"
+    }
+  },
+  "snapshots": [
+    {
+      "code": "000083",
+      "nav": null,
+      "nav_trusted": false,
+      "proxy": "000300",
+      "dev_pct": 0.0011
+    },
+    {
+      "code": "001532",
+      "nav": null,
+      "nav_trusted": false,
+      "proxy": "000300",
+      "dev_pct": 0.0011
+    },
+    {
+      "code": "003096",
+      "nav": null,
+      "nav_trusted": false,
+      "proxy": "399006",
+      "dev_pct": 0.0861
+    },
+    {
+      "code": "005827",
+      "nav": null,
+      "nav_trusted": false,
+      "proxy": "000300",
+      "dev_pct": 0.0011
+    }
+  ]
+}

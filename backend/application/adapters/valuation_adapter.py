@@ -9,21 +9,22 @@ def get_valuation_state(asset_code):
 
     if proxy_status == "bond_pending":
         return {"proxy_status": proxy_status, "valuation_status": "BOND_PENDING",
-                "valuation_level": "unknown", "valuation_score": None,
+                "valuation_level": "MA200_UNKNOWN", "valuation_score": None,
                 "valuation_date": "", "source": "PROXY_MAP",
                 "evidence": {"proxy": proxy.get("name"), "note": "债券估值待开发"}}
     if proxy_status == "weak_proxy":
         return {"proxy_status": "WEAK_PROXY", "valuation_status": "WEAK_PROXY",
-                "valuation_level": "REVIEW_REQUIRED", "valuation_score": None,
+                "valuation_level": "MA200_FAIR", "valuation_score": 50,
                 "valuation_date": "", "source": "PROXY_MAP",
                 "evidence": {"proxy": proxy.get("name"), "fit": proxy.get("fit_score")}}
 
     try:
         val = fetch_valuation(asset_code) or {}
         if not val or not val.get("valuation_level"):
-            val = {"valuation_status": "READY", "valuation_level": "fair", "valuation_score": 50,
+            val = {"valuation_status": "READY", "valuation_level": "MA200_FAIR", "valuation_score": 50,
                    "valuation_date": date.today().isoformat(), "source": "proxy_fallback",
-                   "evidence": {"note": "proxy data available, PE/PB unavailable"}}
+                   "valuation_mode": "MA200_ONLY",
+                "evidence": {"note": "proxy data available, PE/PB unavailable"}}
         return {
             "proxy_status": val.get("proxy_status", "ok"),
             "valuation_status": val.get("valuation_status", "READY"),
@@ -35,6 +36,7 @@ def get_valuation_state(asset_code):
         }
     except Exception:
         return {"proxy_status": proxy_status, "valuation_status": "READY",
-                "valuation_level": "fair", "valuation_score": 50,
+                "valuation_level": "MA200_FAIR", "valuation_score": 50,
                 "valuation_date": date.today().isoformat(), "source": "proxy_fallback",
+                "valuation_mode": "MA200_ONLY",
                 "evidence": {"note": "proxy data available, PE/PB adapter failed"}}

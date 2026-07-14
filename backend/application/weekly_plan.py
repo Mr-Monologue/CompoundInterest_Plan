@@ -140,7 +140,7 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
 
                 # Valuation
                 val = adapters["valuation"](asset.code)
-                val_state = val.get("valuation_state", "unknown")
+                val_state = val.get("valuation_level", val.get("valuation_state", "MA200_FAIR"))
                 if val.get("valuation_status") in ("SOURCE_ERROR", "DATA_MISSING"):
                     dq = "REVIEW_REQUIRED"
 
@@ -151,14 +151,16 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
                     item = {"asset_code": asset.code, "asset_role": asset.role,
                             "candidate_action": "REVIEW_REQUIRED",
                             "fixed_amount": None, "dynamic_amount": None, "candidate_amount": None,
-                            "valuation_state": val_state, "data_quality_status": dq,
+                            "valuation_state": val_state,
+                            "valuation_mode": val.get("valuation_mode", "MA200_ONLY"), "data_quality_status": dq,
                             "calculation_trace": dca.get("error", ""), "risk_status": "FAILED"}
                 else:
                     item = {"asset_code": asset.code, "asset_role": asset.role,
                             "fixed_amount": dca["fixed_amount"], "dynamic_amount": dca["dynamic_amount"],
                             "candidate_amount": dca["candidate_amount"],
                             "candidate_action": dca["candidate_action"],
-                            "valuation_state": val_state, "data_quality_status": dq,
+                            "valuation_state": val_state,
+                            "valuation_mode": val.get("valuation_mode", "MA200_ONLY"), "data_quality_status": dq,
                             "risk_status": dca.get("risk_status", "ok"),
                             "calculation_trace": dca.get("calculation_trace", "{}")}
 
@@ -172,7 +174,20 @@ def build_weekly_investment_plan(session: Session, week_start: str, config_id: i
             core_items = allocate_role_budget(core_items, core_budget)
             satellite_items = allocate_role_budget(satellite_items, sat_budget)
 
-            # Exposure Guard
+            # Fix action: reflect actual allocation
+            for it in core_items + satellite_items:
+                af = it.get("allocated_fixed", 0) or 0
+                ad = it.get("allocated_dynamic", 0) or 0
+                if it.get("final_amount") is None:
+                    it["candidate_action"] = "REVIEW_REQUIRED"
+                elif it.get("final_amount") == 0:
+                    it["candidate_action"] = "OBSERVE"
+                elif ad > 0:
+                    it["candidate_action"] = "DYNAMIC_DCA"
+                elif af > 0:
+                    it["candidate_action"] = "FIXED_DCA"
+
+    # Exposure Guard
             all_items = core_items + satellite_items
             candidates = [i for i in all_items if (i.get("final_amount") or 0) > 0]
             if candidates:
