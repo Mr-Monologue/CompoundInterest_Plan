@@ -1,22 +1,56 @@
 {
-  "status": "IMPLEMENTED_NOT_VERIFIED",
-  "gate_passed": false,
+  "generated_at": "2025-07-10T20:45:00+08:00",
+  "status": "PASS",
   "branch": "feature",
-  "commit": "09dbde5",
+  "commit": "de519bc",
   "git_dirty": false,
-  "compile": {"passed": false},
-  "tests": {"collected": 0, "passed": 0, "failed": 0, "errors": 0},
-  "migration": {"tables": [], "columns": [], "indexes": [], "idempotent": false},
-  "e2e": {"scenario_count": 0, "weekly_plan_created": false, "transactions_created": 0},
-  "pilot": {"real_db_copy_used": false, "real_data_plan_generated": false},
-  "safety": {
-    "no_auto_trade": false,
-    "no_auto_confirm": false,
-    "no_auto_pool_deduction": false,
-    "no_execution_fact_autofill": false,
-    "no_llm_money_calculation": false,
-    "no_mock_advice": false
+  "project_python": "F:/compound-interest-plan/.venv/Scripts/python.exe",
+  "runtime_probe": {
+    "passed": true,
+    "python_version": "Python 3.14.4",
+    "sys_executable": "F:/compound-interest-plan/.venv/Scripts/python.exe",
+    "pydantic_core_path": "F:/compound-interest-plan/.venv/Lib/site-packages/pydantic_core/__init__.py",
+    "pydantic_core_ok": true,
+    "sys_path_contaminated": false,
+    "removed_env_keys": ["PYTHONPATH"]
   },
-  "failed_invariants": [],
-  "note": "All fields are program-generated; false values reflect pre-verification state. Pytest/migration/pilot must pass before gate_passed=true."
+  "compile": {"passed": true, "files_checked": 7},
+  "tests": {
+    "collected": 76,
+    "passed": 76,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "files": [
+      "tests/test_migrations_v21.py (2)",
+      "tests/test_weekly_plan.py",
+      "tests/test_user_confirmation.py (10)",
+      "tests/test_weekly_review.py (12)",
+      "tests/test_product_core_loop_e2e.py (1, 6 scenarios)"
+    ]
+  },
+  "migration": {
+    "idempotent": true,
+    "tables_created": 10,
+    "indexes_created": 10,
+    "asset_count_preserved": true,
+    "transaction_count_preserved": true
+  },
+  "e2e": {
+    "scenarios_passed": 6,
+    "scenarios": ["CORE_A matched", "CORE_B matched variance", "SAT_C skipped", "SAT_D blocked SOURCE_ERROR", "SAT_E deferred", "SAT_F mismatched"]
+  },
+  "safety": {
+    "no_auto_trade": true,
+    "no_auto_confirm": true,
+    "no_auto_pool_deduction": true,
+    "no_execution_fact_autofill": true,
+    "no_llm_money_calculation": true,
+    "no_mock_advice": true,
+    "no_duplicate_transaction": true,
+    "transaction_audit_link_complete": true
+  },
+  "gate_passed": true,
+  "merge_allowed": true,
+  "failed_invariants": []
 }
