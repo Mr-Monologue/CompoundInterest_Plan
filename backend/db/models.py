@@ -54,6 +54,8 @@ class Transaction(SQLModel, table=True):
     amount: float
     fee: float = 0.0
     units: float
+    # v2.1: link to ReconciliationRecord for audit trail
+    source_execution_id: Optional[int] = None
 
 
 # 3. FundState

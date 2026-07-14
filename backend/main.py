@@ -51,6 +51,10 @@ app = FastAPI(lifespan=lifespan)
 # v2.1: Register Weekly Plan router
 app.include_router(weekly_plan_router)
 
+# v2.1: User Confirmation router
+from api.user_confirmation import router as user_confirmation_router
+app.include_router(user_confirmation_router)
+
 # v1.0.1: AI Exposure Analyst router
 from api.exposure import router as exposure_router
 app.include_router(exposure_router)
