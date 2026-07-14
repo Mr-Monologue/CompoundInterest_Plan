@@ -1,0 +1,78 @@
+{
+  "funds": {
+    "000083": {
+      "nav": 4.25,
+      "date": "2026-07-13"
+    },
+    "001532": {
+      "nav": 5.802,
+      "date": "2026-07-13"
+    },
+    "003096": {
+      "nav": 1.8313,
+      "date": "2026-07-13"
+    },
+    "005827": {
+      "nav": 1.5043,
+      "date": "2026-07-13"
+    }
+  },
+  "index_data": {
+    "000300": {
+      "close": 4796.502,
+      "ma200": 4691.94582,
+      "dev_pct": 0.0223,
+      "date": "2026-07-14",
+      "rows": 5948
+    },
+    "399006": {
+      "close": 3851.137,
+      "ma200": 3433.069535,
+      "dev_pct": 0.1218,
+      "date": "2026-07-14",
+      "rows": 3913
+    }
+  },
+  "proxy_audit": [
+    {
+      "asset_code": "000083",
+      "fund_name": "汇添富消费行业混合",
+      "theme": "消费",
+      "proxy_code": "000300",
+      "proxy_name": "沪深300",
+      "rationale": "消费行业基金以大消费行业龙头为主要配置方向，与沪深300大盘风格一致。    基金合同业绩基准：沪深300指数收益率×80%+中债综合指数收益率×20% → 沪深300覆盖80%",
+      "confidence": "CONFIRMED",
+      "evidence": "contract_benchmark"
+    },
+    {
+      "asset_code": "001532",
+      "fund_name": "华泰柏瑞量化增强混合",
+      "theme": "宽基量化",
+      "proxy_code": "000300",
+      "proxy_name": "沪深300",
+      "rationale": "量化增强基金以沪深300为基准，目标是超越沪深300。    基金策略本身就是对沪深300的增强，代理直接映射基准指数。",
+      "confidence": "CONFIRMED",
+      "evidence": "strategy_benchmark"
+    },
+    {
+      "asset_code": "003096",
+      "fund_name": "中欧医疗健康混合",
+      "theme": "医药",
+      "proxy_code": "399006",
+      "proxy_name": "创业板指",
+      "rationale": "创业板指成分中医疗健康占比约20%，仅部分覆盖医药行业。    更合适的代理可能是医药生物指数(如000808申万医药)或中证医药(000933)。    当前创业板指不能准确反映医药行业暴露。",
+      "confidence": "REVIEW_REQUIRED",
+      "evidence": "sector_weight_mismatch"
+    },
+    {
+      "asset_code": "005827",
+      "fund_name": "易方达蓝筹精选混合",
+      "theme": "大盘蓝筹",
+      "proxy_code": "000300",
+      "proxy_name": "沪深300",
+      "rationale": "蓝筹精选基金以A股+港股大盘蓝筹为主要配置，沪深300覆盖A股大盘部分。    港股暴露(约占30-40%)沪深300无法覆盖，但不影响A股部分估值参照。",
+      "confidence": "CONFIRMED",
+      "evidence": "large_cap_style_match"
+    }
+  ]
+}
