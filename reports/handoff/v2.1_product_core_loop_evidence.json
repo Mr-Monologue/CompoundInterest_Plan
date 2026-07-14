@@ -1,43 +1,22 @@
 {
-  "milestone": "v2.1-product-core-loop",
-  "status": "PHASE_5_COMPLETE",
+  "status": "IMPLEMENTED_NOT_VERIFIED",
+  "gate_passed": false,
   "branch": "feature",
-  "commit": "a465b84",
+  "commit": "09dbde5",
   "git_dirty": false,
-  "test_commands": [
-    ".venv/Scripts/python -m pytest tests/test_weekly_plan.py -q",
-    ".venv/Scripts/python -m pytest tests/test_user_confirmation.py -q",
-    ".venv/Scripts/python -m pytest tests/test_product_core_loop_e2e.py -q",
-    ".venv/Scripts/python -m pytest tests/ -q"
-  ],
-  "migration_result": {
-    "new_tables": ["weekly_review", "weekly_review_item", "follow_up_action", "plan_item_user_decision", "execution_record", "reconciliation_record"],
-    "new_columns": ["transaction.source_execution_id"],
-    "unique_indexes": 7,
-    "idempotent": true,
-    "no_drop": true
-  },
-  "product_core_loop": {
-    "weekly_plan_created": true,
-    "plan_frozen": true,
-    "user_decisions_recorded": true,
-    "execution_records_created": true,
-    "reconciliations_created": true,
-    "transactions_created": true,
-    "weekly_review_created": true,
-    "follow_up_actions_created": true,
-    "review_closed": true
-  },
+  "compile": {"passed": false},
+  "tests": {"collected": 0, "passed": 0, "failed": 0, "errors": 0},
+  "migration": {"tables": [], "columns": [], "indexes": [], "idempotent": false},
+  "e2e": {"scenario_count": 0, "weekly_plan_created": false, "transactions_created": 0},
+  "pilot": {"real_db_copy_used": false, "real_data_plan_generated": false},
   "safety": {
-    "no_auto_trade": true,
-    "no_auto_confirm": true,
-    "no_auto_pool_deduction": true,
-    "no_execution_fact_autofill": true,
-    "no_llm_money_calculation": true,
-    "no_silent_strategy_change": true,
-    "recommended_amount_unchanged": true,
-    "risk_guard_unchanged": true,
-    "exposure_guard_unchanged": true
+    "no_auto_trade": false,
+    "no_auto_confirm": false,
+    "no_auto_pool_deduction": false,
+    "no_execution_fact_autofill": false,
+    "no_llm_money_calculation": false,
+    "no_mock_advice": false
   },
-  "product_flow": "MarketData→DataQuality→Valuation→ValueDCA→Budget→ExposureGuard→WeeklyPlan→UserDecision→Execution→Reconciliation→Transaction→WeeklyReview→FollowUpAction→NextCycle"
+  "failed_invariants": [],
+  "note": "All fields are program-generated; false values reflect pre-verification state. Pytest/migration/pilot must pass before gate_passed=true."
 }
