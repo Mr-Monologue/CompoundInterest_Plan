@@ -3,7 +3,7 @@ import pytest
 from decimal import Decimal
 from datetime import datetime
 from sqlmodel import Session, SQLModel, create_engine, select, StaticPool
-from db.models import (Asset, InvestmentPlanConfig, WeeklyInvestmentPlan, WeeklyPlanItem,
+from db.models import (Asset, InvestmentPlanConfig, PlanState, WeeklyInvestmentPlan, WeeklyPlanItem,
                        Transaction, FundState)
 from application.models_reconciliation import (PlanItemUserDecision, ExecutionRecord, ReconciliationRecord)
 
@@ -142,7 +142,7 @@ def test_reconcile_creates_transaction(session, frozen_plan):
 
 
 def test_pool_balance_unchanged(session, frozen_plan):
-    st = FundState(code="pool", pool_balance=1000.0)
+    st = PlanState(id=1, pool_balance=1000.0)
     session.add(st); session.commit()
     from application.user_confirmation import submit_decision, submit_execution, reconcile_execution
     _, item = frozen_plan
@@ -152,4 +152,4 @@ def test_pool_balance_unchanged(session, frozen_plan):
                                              "platform": "ant", "external_reference": "TXN001",
                                              "executed_at": "2026-08-04T10:00:00"})
     reconcile_execution(session, r["execution_id"], {"confirm": True})
-    assert session.get(FundState, st.id).pool_balance == 1000.0
+    assert session.get(PlanState, st.id).pool_balance == 1000.0

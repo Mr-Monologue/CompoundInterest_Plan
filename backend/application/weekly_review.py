@@ -78,7 +78,12 @@ def generate_weekly_review(session: Session, weekly_plan_id: int, rebuild: bool 
         elif decision and decision.user_action == "APPROVED":
             if execution and execution.execution_status == "EXECUTED":
                 if reconciliation and reconciliation.reconciliation_status == "MATCHED":
-                    category = "EXECUTED_MATCHED"; count["matched"] += 1
+                    txn_chk = session.exec(select(Transaction).where(
+                        Transaction.source_execution_id == execution.id)).first()
+                    if txn_chk:
+                        category = "EXECUTED_MATCHED"; count["matched"] += 1
+                    else:
+                        category = "DATA_ERROR"; count["mismatch"] += 1
                 elif reconciliation and reconciliation.reconciliation_status in ("MISMATCH", "REJECTED"):
                     category = "EXECUTED_MISMATCH"; count["mismatch"] += 1
                 else:

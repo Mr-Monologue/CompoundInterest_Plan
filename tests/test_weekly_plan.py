@@ -2,7 +2,7 @@
 import pytest
 from decimal import Decimal
 from sqlmodel import Session, SQLModel, create_engine, select, StaticPool
-from db.models import (Asset, InvestmentPlanConfig, WeeklyInvestmentPlan, WeeklyPlanItem,
+from db.models import (Asset, InvestmentPlanConfig, PlanState, WeeklyInvestmentPlan, WeeklyPlanItem,
                        DecisionJournalEntry, DailyDecision, Transaction, FundState,
                        FundHoldingSnapshot, MarketSnapshot)
 
@@ -208,7 +208,7 @@ def test_no_userdecision_created(session, default_config, e2e):
 
 
 def test_pool_balance_unchanged(session, default_config, e2e):
-    st = FundState(code="pool", pool_balance=1000.0)
+    st = PlanState(id=1, pool_balance=1000.0)
     session.add(st); session.commit()
     from application.weekly_plan import build_weekly_investment_plan, freeze_weekly_plan
     r = build_weekly_investment_plan(session, "2026-08-03", 1,
@@ -217,7 +217,7 @@ def test_pool_balance_unchanged(session, default_config, e2e):
         it.data_quality_status = "ok"
     session.commit()
     freeze_weekly_plan(session, r["plan_id"])
-    assert session.get(FundState, st.id).pool_balance == 1000.0
+    assert session.get(PlanState, st.id).pool_balance == 1000.0
 
 
 # ── Snapshot tests ──
