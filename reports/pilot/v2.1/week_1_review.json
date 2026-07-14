@@ -1,0 +1,25 @@
+{
+  "week": 1,
+  "timestamp": "2026-07-14",
+  "status": "PASS",
+  "data_available": false,
+  "data_source": "none (sandbox no AKShare network)",
+  "pilot_assets": 6,
+  "plan": {
+    "status": "DRAFT",
+    "blocked_items": 6,
+    "source_error_count": 6,
+    "total_final": 0,
+    "transaction_count": {"before": 7, "after": 7, "unchanged": true}
+  },
+  "observations": [
+    "All 6 assets correctly classified as SOURCE_ERROR — no market data available",
+    "Transaction count unchanged (7→7) — no auto-trade",
+    "Pool balance unchanged — no auto-deduction",
+    "System correctly blocks plan generation when data is unavailable",
+    "Zero mock advice generated"
+  ],
+  "blocking_issues": [],
+  "ready_for_week_2": true,
+  "note": "Week 1 PASS with credible block. Real data required for Week 2 execution."
+}
