@@ -1,4 +1,4 @@
-"""v2.1 User Confirmation — models."""
+"""v2.1 User Confirmation — models (stabilized)."""
 from typing import Optional
 from sqlmodel import Field, SQLModel
 from sqlalchemy import UniqueConstraint
@@ -21,7 +21,7 @@ class PlanItemUserDecision(SQLModel, table=True):
 
 class ExecutionRecord(SQLModel, table=True):
     __tablename__ = "execution_record"
-    __table_args__ = (UniqueConstraint("external_reference", name="uq_external_ref"),)
+    __table_args__ = (UniqueConstraint("weekly_plan_item_id", name="uq_execution_item"),)
     id: Optional[int] = Field(default=None, primary_key=True)
     weekly_plan_item_id: int
     user_decision_id: Optional[int] = None
@@ -32,7 +32,7 @@ class ExecutionRecord(SQLModel, table=True):
     actual_units: Optional[float] = None
     fee: float = 0.0
     platform: str = ""
-    external_reference: str = ""
+    external_reference: Optional[str] = Field(default=None, nullable=True)
     user_note: str = ""
     created_at: datetime = Field(default_factory=datetime.now)
 
