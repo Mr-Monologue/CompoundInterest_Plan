@@ -55,6 +55,10 @@ app.include_router(weekly_plan_router)
 from api.user_confirmation import router as user_confirmation_router
 app.include_router(user_confirmation_router)
 
+# v2.1: Weekly Review router
+from api.weekly_review import router as weekly_review_router
+app.include_router(weekly_review_router)
+
 # v1.0.1: AI Exposure Analyst router
 from api.exposure import router as exposure_router
 app.include_router(exposure_router)
