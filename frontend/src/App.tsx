@@ -40,8 +40,12 @@ function App() {
 
   const handleBuild = async () => {
     setLoading(true); setError(null);
+    const today = new Date();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const weekStart = monday.toISOString().slice(0, 10);
     try {
-      await buildWeeklyPlan({ week_start: '', config_id: 1 });
+      await buildWeeklyPlan({ week_start: weekStart, config_id: 1 });
       await fetchPlan();
     } catch (e: any) { setError(e?.detail || 'Build failed'); }
     finally { setLoading(false); }
