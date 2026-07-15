@@ -219,8 +219,11 @@ def get_strategy_framework(code: str, session: Session = Depends(get_session)):
 
 
 # 6. 交易记录
-@app.post("/api/transactions")
-def create_transaction(tx: TransactionCreate, session: Session = Depends(get_session)):
+@app.post("/api/transactions", status_code=410)
+def create_transaction_disabled():
+    return {"error": "LEGACY_TRANSACTION_WRITE_DISABLED"}
+
+# def create_transaction  # DISABLED(tx: TransactionCreate, session: Session = Depends(get_session)):
     # 逻辑：前端如果没有传 fee，我们帮他自动算
 
     calc_fee = tx.fee
@@ -1077,6 +1080,10 @@ async def serve_root():
         return FileResponse(index_path)
     return {"error": "frontend not built. Run: cd frontend && npm run build"}
 
+
+# Static assets mount (before SPA catchall)
+if os.path.exists(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=9600)
