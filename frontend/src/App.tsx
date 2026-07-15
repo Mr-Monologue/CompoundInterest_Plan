@@ -45,7 +45,7 @@ function App() {
     monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
     const weekStart = monday.toISOString().slice(0, 10);
     try {
-      await buildWeeklyPlan({ week_start: weekStart, config_id: 1 });
+      await buildWeeklyPlan({ week_start: weekStart, config_id: 1, rebuild: true });
       await fetchPlan();
     } catch (e: any) { setError(e?.detail || 'Build failed'); }
     finally { setLoading(false); }
@@ -127,6 +127,9 @@ function App() {
                 <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {isDraft && <button onClick={handleBuild} style={secondaryBtn}>刷新计划</button>}
                   {isDraft && <button onClick={handleFreeze} style={primaryBtn}><Lock size={14} /> 冻结计划</button>}
+                  {(plan.status === 'CLOSED' || plan.status === 'SUPERSEDED') && (
+                    <button onClick={handleBuild} style={primaryBtn}>重新生成计划</button>
+                  )}
                 </div>
               </div>
 
