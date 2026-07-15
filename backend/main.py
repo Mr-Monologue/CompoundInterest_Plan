@@ -1,12 +1,6 @@
 import os
 
-# 强制禁用代理，确保 Python 能走 VPN 或直连
-os.environ["http_proxy"] = ""
-os.environ["https_proxy"] = ""
-os.environ["HTTP_PROXY"] = ""
-os.environ["HTTPS_PROXY"] = ""
-os.environ["NO_PROXY"] = "*"
-
+# Proxy settings managed by environment / project config — do NOT force-clear
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -301,8 +295,11 @@ def get_transactions(code: str, session: Session = Depends(get_session)):
     return txs
 
 
-# === 新增：修改交易 ===
-@app.put("/api/transactions/{tx_id}")
+# === Legacy transaction write — DISABLED, use v2.1 reconciliation ===
+@app.put("/api/transactions/{tx_id}", status_code=410)
+def legacy_tx_update_disabled(tx_id: int):
+    return {"error": "LEGACY_TRANSACTION_WRITE_DISABLED", "detail": "Use reconciliation path"}
+# def update_transaction  # DISABLED (tx_id: int, new_data: TransactionUpdate, session: Session = Depends(get_session)):
 def update_transaction(
     tx_id: int, new_data: TransactionCreate, session: Session = Depends(get_session)
 ):
@@ -329,7 +326,10 @@ def update_transaction(
 
 
 # === 新增：删除交易 ===
-@app.delete("/api/transactions/{tx_id}")
+@app.delete("/api/transactions/{tx_id}", status_code=410)
+def legacy_tx_delete_disabled(tx_id: int):
+    return {"error": "LEGACY_TRANSACTION_WRITE_DISABLED"}
+# def delete_transaction  # DISABLED (tx_id: int, session: Session = Depends(get_session)):
 def delete_transaction(tx_id: int, session: Session = Depends(get_session)):
     """删除交易"""
     tx = session.get(Transaction, tx_id)
