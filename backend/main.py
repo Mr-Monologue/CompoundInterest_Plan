@@ -4,8 +4,8 @@ import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlmodel import Session, select
 import uvicorn
 from contextlib import asynccontextmanager
