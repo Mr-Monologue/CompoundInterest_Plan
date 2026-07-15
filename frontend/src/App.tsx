@@ -28,7 +28,8 @@ function App() {
       const latest = list?.[list.length - 1];
       if (latest) {
         const full = await getWeeklyPlan(latest.id);
-        setPlan(full);
+        // Unwrap: API returns {ok, plan, items}
+        setPlan({ ...full.plan, items: full.items || [] });
       } else {
         setPlan(null);
       }
@@ -273,7 +274,8 @@ function DiagnosticsView() {
 async function getWeeklyPlans(): Promise<any[]> {
   const res = await fetch('/api/weekly-plans');
   if (!res.ok) throw { detail: await res.text() };
-  return res.json();
+  const data = await res.json();
+  return data.plans || data || [];
 }
 
 function qtyColor(dq: string) { return STATUS_COLORS[dq] || '#94a3b8'; }
