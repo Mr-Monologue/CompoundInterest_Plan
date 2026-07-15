@@ -1003,7 +1003,7 @@ def dq_ignore(issue_id: int, data: dict, session: Session = Depends(get_session)
 async def serve_frontend(full_path: str):
     # If it's an API request, return 404
     if full_path.startswith("api/"):
-        return {"error": "API endpoint not found"}
+        return JSONResponse(content={"error": "API endpoint not found"}, status_code=404)
 
     # Serve actual static files from dist/
     if full_path.startswith("assets/"):
